@@ -7,6 +7,7 @@ import { DOUGHNUT, TUNING, VIEW } from "../logic/tuning";
 import { solveLevel, STEPS_PER_DECISION } from "../logic/solver";
 import type { DecisionInput } from "../logic/solver";
 import type { LevelData, Sausage } from "../logic/types";
+import { coarsePointer, gameElement, isBlocked, keepAwake, onBlockedChange } from "../platform";
 import { COLORS } from "./palette";
 
 const DEPTH = { back: 5, sausage: 10, front: 15, fx: 20, hud: 100 } as const;
@@ -17,6 +18,15 @@ const GRADE_TEXT: Record<Grade, { label: string; color: string }> = {
   good: { label: "Good", color: "#7a4a70" },
   sloppy: { label: "Sloppy", color: "#8a7a80" },
 };
+
+// A press this soon after a crash or the finish is ignored, so that a late
+// tap does not wipe the message before the player has read it.
+const END_LOCKOUT_MS = 400;
+// A frame this long means the game was frozen (a locked phone, a switched
+// app); the run pauses rather than carrying on unseen.
+const GAP_PAUSE_MS = 500;
+
+type Mode = "ready" | "running" | "paused" | "ended";
 
 const DEATH_TEXT: Record<DeathCause, string> = {
   sausage: "Bonk! The sausage hit the dough.",
@@ -31,17 +41,27 @@ export class LevelScene extends Phaser.Scene {
   private runner!: RunnerState;
   private accumulator = 0;
   private pressLatch = false;
-  private pointerDown = false;
+  private mode: Mode = "ready";
+  private endedAt = 0;
+  private updatesSinceStart = 0;
+  private glLost = false;
+  // The finger (or mouse) whose press started the current jump, by pointer
+  // id. Only it can hold the jump, so a thumb resting elsewhere on the glass
+  // does not turn every tap into a full-height jump.
+  private holdPointer: number | null = null;
+  // Where the doughnut was before the latest step, for drawing between steps.
+  private prevX = 0;
+  private prevY = 0;
   private deaths = 0;
   private best = 0;
   private showHitboxes = false;
-  // With ?demo in the URL, the solver's winning inputs play the level.
+  // With ?demo or #demo in the URL, the solver's winning inputs play the level.
   private demoInputs: DecisionInput[] | null = null;
   private stepCount = 0;
 
   private back!: Phaser.GameObjects.Image;
   private front!: Phaser.GameObjects.Image;
-  private sausages: Phaser.GameObjects.Graphics[] = [];
+  private sausages: Phaser.GameObjects.Image[] = [];
   private debug!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
   private banner!: Phaser.GameObjects.Text;
@@ -85,14 +105,20 @@ export class LevelScene extends Phaser.Scene {
       })
       .setDepth(DEPTH.back - 1);
 
+    // Phones show the game at about two thirds of its size, so the text is
+    // set larger there, and the hint names the finger rather than keys.
+    const touch = coarsePointer();
     this.hud = this.add
-      .text(16, 12, "", { fontFamily: "sans-serif", fontSize: "20px", color: COLORS.text })
+      .text(16, 12, "", { fontFamily: "sans-serif", fontSize: touch ? "26px" : "20px", color: COLORS.text })
       .setScrollFactor(0)
       .setDepth(DEPTH.hud);
+    const hint = touch
+      ? "Tap to jump, hold to jump higher"
+      : "Space: jump (hold for height)   R: restart   H: hitboxes";
     this.add
-      .text(VIEW.width - 16, 12, "Space / tap: jump (hold for height)   R: restart   H: hitboxes", {
+      .text(VIEW.width - 16, 12, hint, {
         fontFamily: "sans-serif",
-        fontSize: "14px",
+        fontSize: touch ? "22px" : "14px",
         color: COLORS.text,
       })
       .setOrigin(1, 0)
@@ -101,7 +127,7 @@ export class LevelScene extends Phaser.Scene {
     this.banner = this.add
       .text(VIEW.width / 2, VIEW.height / 2 - 60, "", {
         fontFamily: "sans-serif",
-        fontSize: "28px",
+        fontSize: touch ? "34px" : "28px",
         color: COLORS.text,
         align: "center",
         backgroundColor: "#fff1f7cc",
@@ -113,24 +139,36 @@ export class LevelScene extends Phaser.Scene {
       .setVisible(false);
 
     this.bindInput();
-    if (new URLSearchParams(window.location.search).has("demo")) {
-      this.demoInputs = solveLevel(this.level, PLAIN).inputs;
-    }
+    this.watchForInterruptions();
+    const demo = new URLSearchParams(window.location.search).has("demo") || window.location.hash === "#demo";
+    if (demo) this.demoInputs = solveLevel(this.level, PLAIN).inputs;
     this.restart();
+    if (this.demoInputs) this.mode = "running";
+    else this.showBanner(`${this.verb()} to start\n${coarsePointer() ? "Hold" : "Hold Space"} for a higher jump`);
   }
 
   update(_time: number, deltaMs: number): void {
+    if (this.mode === "running" && this.updatesSinceStart++ > 10 && this.game.loop.rawDelta > GAP_PAUSE_MS) {
+      this.pause();
+    }
+    if (this.mode !== "running" || this.glLost) {
+      this.accumulator = 0;
+      this.render(1);
+      return;
+    }
     // Cap the frame time so that a stalled tab does not fast-forward the run.
     this.accumulator += Math.min(deltaMs / 1000, 0.1);
-    while (this.accumulator >= TUNING.fixedStep) {
+    while (this.accumulator >= TUNING.fixedStep && this.mode === "running") {
       this.accumulator -= TUNING.fixedStep;
       const input = this.demoInputs ? this.demoInput() : { held: this.isHeld(), pressed: this.pressLatch };
       this.pressLatch = false;
       this.stepCount += 1;
+      this.prevX = this.runner.x;
+      this.prevY = this.runner.y;
       const events = stepRunner(this.runner, input, this.level, PLAIN);
       events.forEach((e) => this.onEvent(e));
     }
-    this.render();
+    this.render(this.mode === "running" ? this.accumulator / TUNING.fixedStep : 1);
   }
 
   private bindInput(): void {
@@ -139,14 +177,86 @@ export class LevelScene extends Phaser.Scene {
       const K = Phaser.Input.Keyboard.KeyCodes;
       this.jumpKeys = [K.SPACE, K.UP, K.W].map((code) => kb.addKey(code));
       this.jumpKeys.forEach((key) => key.on("down", () => this.onPress()));
-      kb.on("keydown-R", () => this.restart());
+      kb.on("keydown-R", () => {
+        if (isBlocked() || this.glLost) return;
+        this.restart();
+        this.mode = "running";
+      });
       kb.on("keydown-H", () => (this.showHitboxes = !this.showHitboxes));
     }
-    this.input.on("pointerdown", () => {
-      this.pointerDown = true;
+    // The whole game area is the jump button, including the bars around the
+    // canvas, so presses are read from the page's pointer events rather than
+    // Phaser's, which cover the canvas alone. The platform module cancels the
+    // browser's touch gestures on the same area.
+    const zone = gameElement();
+    const down = (e: PointerEvent) => {
+      if (e.button > 0) return;
+      // Phaser no longer grabs focus at load, so take it here for the keys.
+      window.focus();
+      // Deliver the release here even if the finger or mouse leaves the area.
+      zone.setPointerCapture?.(e.pointerId);
+      this.holdPointer = e.pointerId;
       this.onPress();
+    };
+    const up = (e: PointerEvent) => {
+      if (e.pointerId === this.holdPointer) this.holdPointer = null;
+    };
+    // A release the page never receives (outside a frame, say) still ends
+    // the hold once the mouse comes back with its button up.
+    const moved = (e: PointerEvent) => {
+      if (e.pointerId === this.holdPointer && (e.buttons & 1) === 0) this.holdPointer = null;
+    };
+    const release = () => (this.holdPointer = null);
+    const noMenu = (e: Event) => e.preventDefault();
+    zone.addEventListener("pointerdown", down);
+    zone.addEventListener("contextmenu", noMenu);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    window.addEventListener("pointermove", moved);
+    window.addEventListener("blur", release);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      zone.removeEventListener("pointerdown", down);
+      zone.removeEventListener("contextmenu", noMenu);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointermove", moved);
+      window.removeEventListener("blur", release);
     });
-    this.input.on("pointerup", () => (this.pointerDown = false));
+  }
+
+  private watchForInterruptions(): void {
+    const onHidden = () => {
+      if (document.hidden) this.pause();
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    onBlockedChange((blocked) => blocked && this.pause());
+    const renderer = this.game.renderer;
+    if (renderer instanceof Phaser.Renderer.WebGL.WebGLRenderer) {
+      renderer.on(Phaser.Renderer.Events.LOSE_WEBGL, () => {
+        this.glLost = true;
+        this.pause();
+      });
+      renderer.on(Phaser.Renderer.Events.RESTORE_WEBGL, () => {
+        this.glLost = false;
+        this.pause();
+      });
+    }
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => document.removeEventListener("visibilitychange", onHidden));
+  }
+
+  private verb(): string {
+    return coarsePointer() ? "Tap" : "Press";
+  }
+
+  private pause(): void {
+    if (this.mode !== "running") return;
+    this.mode = "paused";
+    this.holdPointer = null;
+    this.pressLatch = false;
+    // Resume drawing from where the doughnut stands, not a step behind it.
+    this.prevX = this.runner.x;
+    this.prevY = this.runner.y;
+    this.showBanner(`Paused\n${this.verb()} to continue`);
   }
 
   private demoInput(): { held: boolean; pressed: boolean } {
@@ -157,19 +267,39 @@ export class LevelScene extends Phaser.Scene {
   }
 
   private isHeld(): boolean {
-    return this.pointerDown || this.jumpKeys.some((k) => k.isDown);
+    return this.holdPointer !== null || this.jumpKeys.some((k) => k.isDown);
   }
 
   private onPress(): void {
-    if (this.runner.dead || this.runner.finished) {
-      this.restart();
-      return;
+    if (isBlocked() || this.glLost) return;
+    switch (this.mode) {
+      case "running":
+        this.pressLatch = true;
+        break;
+      case "ready":
+      case "paused":
+        // This press starts or resumes the run; it does not also jump.
+        this.holdPointer = null;
+        this.mode = "running";
+        this.updatesSinceStart = 0;
+        this.banner.setVisible(false);
+        keepAwake();
+        break;
+      case "ended":
+        if (this.time.now - this.endedAt < END_LOCKOUT_MS) return;
+        this.holdPointer = null;
+        this.restart();
+        this.mode = "running";
+        keepAwake();
+        break;
     }
-    this.pressLatch = true;
   }
 
   private restart(): void {
     this.runner = createRunner(this.level, PLAIN);
+    this.prevX = this.runner.x;
+    this.prevY = this.runner.y;
+    this.updatesSinceStart = 0;
     this.accumulator = 0;
     this.stepCount = 0;
     this.pressLatch = false;
@@ -177,7 +307,7 @@ export class LevelScene extends Phaser.Scene {
     this.back.setVisible(true);
     this.front.setVisible(true);
     this.sausages.forEach((g) => g.setAlpha(1));
-    this.render();
+    this.render(1);
   }
 
   private onEvent(e: RunnerEvent): void {
@@ -209,35 +339,49 @@ export class LevelScene extends Phaser.Scene {
         this.cameras.main.shake(200, 0.01);
         this.back.setVisible(false);
         this.front.setVisible(false);
-        this.showBanner(`${DEATH_TEXT[e.cause]}\nPress to try again`);
+        this.end();
+        this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`);
         break;
       case "finish": {
         this.best = Math.max(this.best, this.runner.score);
         const total = this.level.sausages.length;
+        this.end();
         this.showBanner(
           `Level clear!\nScore ${this.runner.score}   Best ${this.best}\n` +
-            `Threaded ${this.runner.threaded.length}/${total}\nPress to run again`,
+            `Threaded ${this.runner.threaded.length}/${total}\n${this.verb()} to run again`,
         );
         break;
       }
     }
   }
 
-  private render(): void {
+  private end(): void {
+    this.mode = "ended";
+    this.endedAt = this.time.now;
+  }
+
+  /**
+   * Draws the doughnut part of the way from its previous step to its current
+   * one. The simulation steps at 120 Hz while screens refresh at 60, 90, 120
+   * or 144 Hz; drawing only whole steps would make the scroll judder.
+   */
+  private render(alpha: number): void {
     const s = this.runner;
-    this.cameras.main.scrollX = s.x - VIEW.playerScreenX;
-    this.back.setPosition(s.x, s.y);
-    this.front.setPosition(s.x, s.y);
+    const x = this.prevX + (s.x - this.prevX) * alpha;
+    const y = this.prevY + (s.y - this.prevY) * alpha;
+    this.cameras.main.scrollX = x - VIEW.playerScreenX;
+    this.back.setPosition(x, y);
+    this.front.setPosition(x, y);
 
     const gears = TUNING.gears.length;
     const bar = "\u25A0".repeat(s.gear + 1) + "\u25A1".repeat(gears - s.gear - 1);
     const chain = s.chain > 1 ? `   Chain x${s.chain}` : "";
     this.hud.setText(`Score ${s.score}${chain}\nSpeed ${bar}   Deaths ${this.deaths}`);
-    this.trail.frequency = s.gear >= 2 ? 120 / s.gear : -1;
-    this.trail.setPosition(s.x - 10, s.y);
+    this.trail.frequency = this.mode === "running" && s.gear >= 2 ? 120 / s.gear : -1;
+    this.trail.setPosition(x - 10, y);
 
     this.debug.clear();
-    if (this.showHitboxes) this.drawHitboxes();
+    if (this.showHitboxes) this.drawHitboxes(x, y);
   }
 
   private squash(sx: number, sy: number): void {
@@ -251,8 +395,9 @@ export class LevelScene extends Phaser.Scene {
     // Pinned to the screen, since the camera keeps the doughnut in one place.
     const x = VIEW.playerScreenX;
     const y = this.runner.y - DOUGHNUT.outerRadius - 16;
+    const size = (big ? 28 : 20) + (coarsePointer() ? 6 : 0);
     const t = this.add
-      .text(x, y, text, { fontFamily: "sans-serif", fontSize: big ? "28px" : "20px", color, fontStyle: "bold" })
+      .text(x, y, text, { fontFamily: "sans-serif", fontSize: `${size}px`, color, fontStyle: "bold" })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(DEPTH.fx);
@@ -264,40 +409,60 @@ export class LevelScene extends Phaser.Scene {
     this.banner.setText(text).setVisible(true);
   }
 
+  // Phaser redraws Graphics shapes from scratch every frame, and each curve
+  // costs a hundred points. On a mid-range phone the sausages alone took
+  // about 14 ms a frame, so every curved shape is drawn once into a texture
+  // and shown as an image.
+  private bake(key: string, width: number, height: number, draw: (g: Phaser.GameObjects.Graphics) => void): string {
+    if (!this.textures.exists(key)) {
+      const g = this.make.graphics({}, false);
+      draw(g);
+      g.generateTexture(key, width, height);
+      g.destroy();
+    }
+    return key;
+  }
+
   private drawBackdrop(): void {
-    const far = this.add.graphics().setScrollFactor(0.2);
-    const near = this.add.graphics().setScrollFactor(0.45);
-    far.fillStyle(COLORS.hillFar);
-    near.fillStyle(COLORS.hillNear);
+    const far = this.bake("hill-far", 420, 260, (g) => g.fillStyle(COLORS.hillFar).fillEllipse(210, 130, 420, 260));
+    const near = this.bake("hill-near", 360, 200, (g) => g.fillStyle(COLORS.hillNear).fillEllipse(180, 100, 360, 200));
     for (let x = -200; x < this.level.length * 0.2 + VIEW.width; x += 260) {
-      far.fillEllipse(x, VIEW.groundY - 40, 420, 260);
+      this.add.image(x, VIEW.groundY - 40, far).setScrollFactor(0.2);
     }
     for (let x = -100; x < this.level.length * 0.45 + VIEW.width; x += 340) {
-      near.fillEllipse(x, VIEW.groundY + 10, 360, 200);
+      this.add.image(x, VIEW.groundY + 10, near).setScrollFactor(0.45);
     }
   }
 
   private drawGround(): void {
-    const g = this.add.graphics().setDepth(DEPTH.sausage - 1);
+    const depth = DEPTH.sausage - 1;
+    const g = this.add.graphics().setDepth(depth);
+    const cap = this.bake("ground-cap", 16, 16, (c) => c.fillStyle(COLORS.groundTop).fillCircle(8, 8, 8));
     for (const seg of this.level.ground) {
       g.fillStyle(COLORS.ground);
       g.fillRect(seg.x, VIEW.groundY, seg.width, VIEW.height - VIEW.groundY);
+      // The icing strip along the top, with rounded ends from the cap image.
       g.fillStyle(COLORS.groundTop);
-      g.fillRoundedRect(seg.x - 4, VIEW.groundY - 4, seg.width + 8, 16, 8);
+      g.fillRect(seg.x + 4, VIEW.groundY - 4, seg.width - 8, 16);
+      this.add.image(seg.x + 4, VIEW.groundY + 4, cap).setDepth(depth);
+      this.add.image(seg.x + seg.width - 4, VIEW.groundY + 4, cap).setDepth(depth);
     }
   }
 
-  private drawSausage(s: Sausage): Phaser.GameObjects.Graphics {
-    const g = this.add.graphics().setDepth(DEPTH.sausage);
-    const top = s.y - s.thickness / 2;
+  private drawSausage(s: Sausage): Phaser.GameObjects.Image {
     const r = s.thickness / 2;
-    g.fillStyle(COLORS.sausageShade);
-    g.fillRoundedRect(s.x, top, s.length, s.thickness, r);
-    g.fillStyle(COLORS.sausage);
-    g.fillRoundedRect(s.x + 1, top, s.length - 2, s.thickness - 3, r - 1);
-    g.fillStyle(COLORS.sausageShine);
-    g.fillRoundedRect(s.x + r, top + 3, Math.max(0, s.length - 2 * r), 3, 1.5);
-    return g;
+    const key = this.bake(`sausage-${s.length}x${s.thickness}`, s.length, s.thickness, (g) => {
+      g.fillStyle(COLORS.sausageShade);
+      g.fillRoundedRect(0, 0, s.length, s.thickness, r);
+      g.fillStyle(COLORS.sausage);
+      g.fillRoundedRect(1, 0, s.length - 2, s.thickness - 3, r - 1);
+      g.fillStyle(COLORS.sausageShine);
+      g.fillRoundedRect(r, 3, Math.max(0, s.length - 2 * r), 3, 1.5);
+    });
+    return this.add
+      .image(s.x, s.y - r, key)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.sausage);
   }
 
   private drawFinish(): void {
@@ -309,14 +474,13 @@ export class LevelScene extends Phaser.Scene {
     g.fillTriangle(x + 6, VIEW.groundY - 160, x + 60, VIEW.groundY - 140, x + 6, VIEW.groundY - 120);
   }
 
-  private drawHitboxes(): void {
-    const s = this.runner;
+  private drawHitboxes(x: number, y: number): void {
     const g = this.debug;
     const holeHalf = DOUGHNUT.holeRadius + DOUGHNUT.holeForgiveness;
     g.lineStyle(1, 0x0000ff);
-    g.strokeRect(s.x - DOUGHNUT.halfWidth, s.y - DOUGHNUT.outerRadius, DOUGHNUT.halfWidth * 2, DOUGHNUT.outerRadius * 2);
+    g.strokeRect(x - DOUGHNUT.halfWidth, y - DOUGHNUT.outerRadius, DOUGHNUT.halfWidth * 2, DOUGHNUT.outerRadius * 2);
     g.lineStyle(1, 0x00aa00);
-    g.strokeRect(s.x - DOUGHNUT.halfWidth, s.y - holeHalf, DOUGHNUT.halfWidth * 2, holeHalf * 2);
+    g.strokeRect(x - DOUGHNUT.halfWidth, y - holeHalf, DOUGHNUT.halfWidth * 2, holeHalf * 2);
     g.lineStyle(1, 0xff0000);
     for (const z of this.level.sausages) g.strokeRect(z.x, z.y - z.thickness / 2, z.length, z.thickness);
   }

@@ -46,8 +46,18 @@ npm run build      # production build in dist/
 ```
 
 Controls: Space, Up, W, click or tap to jump; hold for a higher jump.
-R restarts, and H shows the hitboxes. Add `?demo` to the URL to watch the
-level solver play the level.
+R restarts, and H shows the hitboxes. Add `?demo` or `#demo` to the URL to
+watch the level solver play the level.
+
+On a phone the whole screen is the jump button, including the bars beside
+the game. The game waits for a first tap, pauses when the phone locks or the
+page is hidden, and asks to be turned sideways in portrait.
+
+## Single-page build
+
+`npm run build:artifact` writes `dist-artifact/doughny-run.html`: one page
+with the game inline and Phaser loaded from jsdelivr, pinned by an integrity
+hash. This is the page published on claude.ai for playing on a phone.
 
 ## Layout
 

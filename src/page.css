@@ -1,0 +1,105 @@
+/* Page shell shared by the Vite build and the claude.ai artifact. */
+:root {
+  --page: #2b1d2e;
+  --ink: #fff1f7;
+  --accent: #ff7eb6;
+  --accent-ink: #2b1d2e;
+  /* One look in both themes: the game's own plum and pink. */
+  color-scheme: dark;
+}
+html {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  /* No pull-to-refresh or bounce while a thumb is on the game. */
+  overscroll-behavior: none;
+  overflow: hidden;
+}
+#game {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-sizing: border-box;
+  /* Keeps the canvas clear of a landscape notch; the gutter is still part of
+     the jump button. */
+  padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  /* The whole area is a jump button: no scrolling, zooming, selection,
+     long-press menu or tap flash. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#stage {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+#rotate {
+  /* A pinch here would leave the page zoomed with nothing left to pinch
+     back, since the game area below blocks zooming. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px;
+  background: var(--page);
+  color: var(--ink);
+  font: 600 20px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  text-align: center;
+}
+#rotate[hidden] {
+  display: none;
+}
+#rotate .phone {
+  width: 44px;
+  height: 76px;
+  border: 4px solid var(--accent);
+  border-radius: 10px;
+  animation: turn 2.4s ease-in-out infinite;
+}
+#rotate button {
+  font: inherit;
+  font-size: 17px;
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+#rotate button:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+@keyframes turn {
+  0%, 30% { transform: rotate(0deg); }
+  60%, 100% { transform: rotate(90deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #rotate[hidden] {
+  display: none;
+}
+#rotate .phone { animation: none; transform: rotate(90deg); }
+}
