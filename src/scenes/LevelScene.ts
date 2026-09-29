@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { GREYBOX } from "../levels/greybox";
 import { createRunner, PLAIN, stepRunner } from "../logic/runner";
 import type { DeathCause, RunnerEvent, RunnerState } from "../logic/runner";
+import type { Grade } from "../logic/tuning";
 import { DOUGHNUT, TUNING, VIEW } from "../logic/tuning";
 import { solveLevel, STEPS_PER_DECISION } from "../logic/solver";
 import type { DecisionInput } from "../logic/solver";
@@ -10,9 +11,15 @@ import { COLORS } from "./palette";
 
 const DEPTH = { back: 5, sausage: 10, front: 15, fx: 20, hud: 100 } as const;
 
+const GRADE_TEXT: Record<Grade, { label: string; color: string }> = {
+  perfect: { label: "PERFECT!", color: "#d6246e" },
+  great: { label: "Great", color: "#b0428a" },
+  good: { label: "Good", color: "#7a4a70" },
+  sloppy: { label: "Sloppy", color: "#8a7a80" },
+};
+
 const DEATH_TEXT: Record<DeathCause, string> = {
   sausage: "Bonk! The sausage hit the dough.",
-  missed: "Missed! That sausage had to go through the hole.",
   fell: "Down the hole you go.",
   wall: "Splat against the cliff.",
 };
@@ -26,6 +33,7 @@ export class LevelScene extends Phaser.Scene {
   private pressLatch = false;
   private pointerDown = false;
   private deaths = 0;
+  private best = 0;
   private showHitboxes = false;
   // With ?demo in the URL, the solver's winning inputs play the level.
   private demoInputs: DecisionInput[] | null = null;
@@ -38,6 +46,8 @@ export class LevelScene extends Phaser.Scene {
   private hud!: Phaser.GameObjects.Text;
   private banner!: Phaser.GameObjects.Text;
   private crumbs!: Phaser.GameObjects.Particles.ParticleEmitter;
+  // Sprinkles shed behind the doughnut, thicker in higher gears.
+  private trail!: Phaser.GameObjects.Particles.ParticleEmitter;
   private jumpKeys: Phaser.Input.Keyboard.Key[] = [];
 
   constructor() {
@@ -63,6 +73,17 @@ export class LevelScene extends Phaser.Scene {
         emitting: false,
       })
       .setDepth(DEPTH.fx);
+    this.trail = this.add
+      .particles(0, 0, "sprinkle", {
+        speedX: { min: -80, max: -20 },
+        speedY: { min: -40, max: 40 },
+        lifespan: 400,
+        rotate: { min: 0, max: 360 },
+        alpha: { start: 1, end: 0 },
+        tint: [0xff7eb6, 0x7ec8ff, 0xfff27e, 0x9dff7e],
+        frequency: -1,
+      })
+      .setDepth(DEPTH.back - 1);
 
     this.hud = this.add
       .text(16, 12, "", { fontFamily: "sans-serif", fontSize: "20px", color: COLORS.text })
@@ -168,12 +189,19 @@ export class LevelScene extends Phaser.Scene {
       case "land":
         this.squash(1.25, 0.8);
         break;
-      case "threadStart":
+      case "grindStart":
         this.sausages[e.index].setAlpha(0.85);
         break;
-      case "threadEnd":
+      case "grindEnd": {
         this.sausages[e.index].setAlpha(0.5);
-        this.popText("+1", this.runner.x, this.runner.y - DOUGHNUT.outerRadius - 10);
+        const g = GRADE_TEXT[e.grade];
+        const chain = e.chain > 1 ? `  x${e.chain} chain` : "";
+        this.popText(`${g.label} +${e.points}${chain}`, g.color, e.grade === "perfect");
+        break;
+      }
+      case "skip":
+        this.sausages[e.index].setAlpha(0.3);
+        this.popText("Skipped: chain lost", GRADE_TEXT.sloppy.color, false);
         break;
       case "die":
         this.deaths += 1;
@@ -183,9 +211,15 @@ export class LevelScene extends Phaser.Scene {
         this.front.setVisible(false);
         this.showBanner(`${DEATH_TEXT[e.cause]}\nPress to try again`);
         break;
-      case "finish":
-        this.showBanner(`Level clear!\nThreaded ${this.threadCount()} sausages.\nPress to run again`);
+      case "finish": {
+        this.best = Math.max(this.best, this.runner.score);
+        const total = this.level.sausages.length;
+        this.showBanner(
+          `Level clear!\nScore ${this.runner.score}   Best ${this.best}\n` +
+            `Threaded ${this.runner.threaded.length}/${total}\nPress to run again`,
+        );
         break;
+      }
     }
   }
 
@@ -195,15 +229,15 @@ export class LevelScene extends Phaser.Scene {
     this.back.setPosition(s.x, s.y);
     this.front.setPosition(s.x, s.y);
 
-    const total = this.level.sausages.filter((z) => z.kind === "thread").length;
-    this.hud.setText(`Threaded ${this.threadCount()}/${total}    Deaths ${this.deaths}`);
+    const gears = TUNING.gears.length;
+    const bar = "\u25A0".repeat(s.gear + 1) + "\u25A1".repeat(gears - s.gear - 1);
+    const chain = s.chain > 1 ? `   Chain x${s.chain}` : "";
+    this.hud.setText(`Score ${s.score}${chain}\nSpeed ${bar}   Deaths ${this.deaths}`);
+    this.trail.frequency = s.gear >= 2 ? 120 / s.gear : -1;
+    this.trail.setPosition(s.x - 10, s.y);
 
     this.debug.clear();
     if (this.showHitboxes) this.drawHitboxes();
-  }
-
-  private threadCount(): number {
-    return this.runner.threaded.length;
   }
 
   private squash(sx: number, sy: number): void {
@@ -213,12 +247,17 @@ export class LevelScene extends Phaser.Scene {
     this.tweens.add({ targets, scaleX: 1, scaleY: 1, duration: 160, ease: "Quad.easeOut" });
   }
 
-  private popText(text: string, x: number, y: number): void {
+  private popText(text: string, color: string, big: boolean): void {
+    // Pinned to the screen, since the camera keeps the doughnut in one place.
+    const x = VIEW.playerScreenX;
+    const y = this.runner.y - DOUGHNUT.outerRadius - 16;
     const t = this.add
-      .text(x, y, text, { fontFamily: "sans-serif", fontSize: "22px", color: COLORS.text, fontStyle: "bold" })
+      .text(x, y, text, { fontFamily: "sans-serif", fontSize: big ? "28px" : "20px", color, fontStyle: "bold" })
       .setOrigin(0.5)
+      .setScrollFactor(0)
       .setDepth(DEPTH.fx);
-    this.tweens.add({ targets: t, y: y - 40, alpha: 0, duration: 700, onComplete: () => t.destroy() });
+    if (big) this.tweens.add({ targets: t, scale: { from: 1.4, to: 1 }, duration: 180 });
+    this.tweens.add({ targets: t, y: y - 50, alpha: 0, delay: 300, duration: 700, onComplete: () => t.destroy() });
   }
 
   private showBanner(text: string): void {
@@ -254,7 +293,7 @@ export class LevelScene extends Phaser.Scene {
     const r = s.thickness / 2;
     g.fillStyle(COLORS.sausageShade);
     g.fillRoundedRect(s.x, top, s.length, s.thickness, r);
-    g.fillStyle(s.kind === "hurdle" ? COLORS.hurdle : COLORS.sausage);
+    g.fillStyle(COLORS.sausage);
     g.fillRoundedRect(s.x + 1, top, s.length - 2, s.thickness - 3, r - 1);
     g.fillStyle(COLORS.sausageShine);
     g.fillRoundedRect(s.x + r, top + 3, Math.max(0, s.length - 2 * r), 3, 1.5);

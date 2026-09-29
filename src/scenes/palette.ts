@@ -11,7 +11,6 @@ export const COLORS = {
   sausage: 0xc0503a,
   sausageShade: 0x8e3424,
   sausageShine: 0xe98a6f,
-  hurdle: 0x9c3f2c,
   text: "#4a2340",
 } as const;
 

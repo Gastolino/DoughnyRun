@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { checkSausage, ringAt } from "../src/logic/threading";
+import { centreOffset, checkSausage, ringAt } from "../src/logic/threading";
 import { DOUGHNUT } from "../src/logic/tuning";
 import type { Sausage } from "../src/logic/types";
 
 const hole = DOUGHNUT.holeRadius + DOUGHNUT.holeForgiveness;
-const sausage = (y: number, thickness = 16): Sausage => ({ kind: "thread", x: 100, y, length: 80, thickness });
+const sausage = (y: number, thickness = 16): Sausage => ({ x: 100, y, length: 80, thickness });
 
 describe("checkSausage", () => {
   const ring = ringAt(140, 300);
@@ -37,5 +37,16 @@ describe("checkSausage", () => {
     expect(checkSausage(ring, sausage(300 - hole + 7))).toBe("hit");
     expect(checkSausage(ring, sausage(300 + hole - 7))).toBe("hit");
     expect(checkSausage(ring, sausage(300 - DOUGHNUT.outerRadius))).toBe("hit");
+  });
+});
+
+describe("centreOffset", () => {
+  const ring = ringAt(140, 300);
+  const slack = hole - 8;
+
+  it("is 0 at dead centre and 1 when grazing the dough", () => {
+    expect(centreOffset(ring, sausage(300))).toBe(0);
+    expect(centreOffset(ring, sausage(300 - slack))).toBe(1);
+    expect(centreOffset(ring, sausage(300 + slack / 2))).toBeCloseTo(0.5);
   });
 });

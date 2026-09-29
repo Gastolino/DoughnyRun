@@ -22,6 +22,7 @@ export class BootScene extends Phaser.Scene {
     this.makeDoughnutHalf("doughnut-back", "back");
     this.makeDoughnutHalf("doughnut-front", "front");
     this.makeCrumb();
+    this.makeSprinkle();
     this.scene.start("level");
   }
 
@@ -87,6 +88,14 @@ export class BootScene extends Phaser.Scene {
     ctx.stroke();
     ctx.restore();
     tex.refresh();
+  }
+
+  private makeSprinkle(): void {
+    const g = this.add.graphics();
+    g.fillStyle(0xffffff);
+    g.fillRoundedRect(0, 0, 8, 3, 1.5);
+    g.generateTexture("sprinkle", 8, 3);
+    g.destroy();
   }
 
   private makeCrumb(): void {

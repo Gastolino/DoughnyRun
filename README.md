@@ -10,11 +10,31 @@ The doughnut stands on edge with its hole facing the direction of travel, so
 a sausage lying along the running direction slides through it like a ring
 onto a stick. While the doughnut overlaps a sausage, the sausage's whole
 thickness must stay inside the hole's vertical span; touching the dough is a
-crash. There are two kinds of sausage:
+crash.
 
-- **thread** sausages float at some height and must pass through the hole.
-  Running past one without threading it counts as a miss.
-- **hurdle** sausages lie on the ground and must be jumped over.
+Raised sausages hang over voids. Running underneath drops the doughnut into
+the void, and the sausage hangs too high to jump over, so the only way across
+is through the hole. The level tests prove this for every such sausage.
+Sausages over solid ground are optional: skipping one costs the chain and a
+gear.
+
+## Grinding, score and speed
+
+Each thread is a grind, graded by how close to the centre of the hole the
+sausage stayed on average:
+
+| Grade   | Mean offset from centre | Points multiplier | Gears |
+|---------|-------------------------|-------------------|-------|
+| Perfect | up to 15% of the slack  | x3                | +2    |
+| Great   | up to 35%               | x2                | +1    |
+| Good    | up to 60%               | x1.5              | 0     |
+| Sloppy  | more                    | x1                | -1    |
+
+Points are the sausage's length times the multiplier, and every unbroken
+Good-or-better grind adds 0.5 to a chain multiplier. The doughnut runs in six
+gears, from 320 to 480 pixels per second; a faster doughnut crosses voids
+more easily but meets each sausage sooner. All of these numbers live in
+`src/logic/tuning.ts`.
 
 ## Running it
 

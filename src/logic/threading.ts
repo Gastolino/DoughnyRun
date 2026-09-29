@@ -46,3 +46,14 @@ export function checkSausage(ring: RingShape, sausage: Sausage): ThreadResult {
   }
   return "hit";
 }
+
+/**
+ * How far the sausage sits from the centre of the hole, as a fraction of the
+ * furthest it can be off-centre and still pass through: 0 is dead centre and
+ * 1 is grazing the dough.
+ */
+export function centreOffset(ring: RingShape, sausage: Sausage): number {
+  const slack = ring.holeRadius + ring.holeForgiveness - sausage.thickness / 2;
+  if (slack <= 0) return 0;
+  return Math.min(1, Math.abs(sausage.y - ring.cy) / slack);
+}

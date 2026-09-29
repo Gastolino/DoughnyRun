@@ -1,50 +1,42 @@
-import { VIEW } from "../logic/tuning";
-import type { LevelData, Sausage } from "../logic/types";
+import { buildLevel, RUN_HEIGHT, sausage } from "./build";
+import type { Gap } from "./build";
+import type { Sausage } from "../logic/types";
 
-// Hole height for a doughnut rolling along the ground.
-const RUN = VIEW.groundY - 48;
+// A raised sausage with a void beneath it. Running under it drops the
+// doughnut into the void, and it hangs too high to jump over, so the only
+// way across is through it. The tests prove this for every such pair.
+function overVoid(x: number, y: number, length: number, voidWidth: number): [Sausage, Gap] {
+  const centre = x + length / 2;
+  return [sausage(x, y, length), { x: centre - voidWidth / 2, width: voidWidth }];
+}
 
-const cocktail = (x: number, y: number, length = 40): Sausage => ({
-  kind: "thread",
-  x,
-  y,
-  length,
-  thickness: 16,
-});
-// A sausage lying on the ground, which the doughnut must jump over.
-const hurdle = (x: number, length = 60): Sausage => ({
-  kind: "hurdle",
-  x,
-  y: VIEW.groundY - 8,
-  length,
-  thickness: 16,
-});
+// Raised sausages sit just below the top of a full jump. Lower ones over a
+// void leave the player almost no time to press, because a jump released
+// early to meet them falls short of the far side.
+const raised = [
+  overVoid(2000, 231, 40, 380),
+  overVoid(3400, 231, 40, 380),
+  overVoid(4500, 233, 40, 370),
+];
 
-export const GREYBOX: LevelData = {
+export const GREYBOX = buildLevel({
   name: "Greybox 1-1",
   length: 6400,
-  ground: [
-    { x: 0, width: 1500 },
-    { x: 1640, width: 1360 },
-    { x: 3160, width: 1240 },
-    { x: 4560, width: 2400 },
+  gaps: [
+    // A plain gap to teach jumping before any raised sausage appears.
+    { x: 1300, width: 140 },
+    ...raised.map(([, gap]) => gap),
   ],
   sausages: [
-    // Lesson 1: the sausage sits at hole height, so running straight threads it.
-    cocktail(700, RUN, 220),
-    // Lesson 2: a sausage on the ground has to be jumped.
-    hurdle(1150),
-    // Lesson 3: a full jump threads a sausage at the top of the arc.
-    cocktail(2050, 265),
-    // Lesson 4: a partial jump, released early, threads a lower sausage.
-    cocktail(2500, 378),
-    // Mixed: over one, through the next, over a gap, through another.
-    hurdle(3300),
-    cocktail(3700, 300),
-    cocktail(4120, RUN, 160),
-    cocktail(4900, 265),
-    hurdle(5300, 90),
-    cocktail(5700, 330),
-    cocktail(6000, RUN, 200),
+    // The first sausage sits at hole height, so running straight threads it
+    // dead centre: a perfect grind that shows the player the reward.
+    sausage(700, RUN_HEIGHT, 220),
+    sausage(3900, RUN_HEIGHT, 160),
+    sausage(5700, RUN_HEIGHT, 200),
+    // Optional grinds over solid ground. A partial jump threads them for
+    // points and speed; running underneath costs the chain.
+    sausage(2700, 300, 40),
+    sausage(5100, 310, 40),
+    ...raised.map(([s]) => s),
   ],
-};
+});
