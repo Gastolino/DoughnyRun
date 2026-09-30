@@ -44,6 +44,7 @@ export class BootScene extends Phaser.Scene {
     this.makeCopArm();
     this.makeDentures();
     this.makeMedals();
+    this.makePadlock();
     this.makeShades();
     // Rainbow lettering is drawn onto canvases, which need the font ready.
     void loadFunFont().then(() => this.scene.start(window.location.hash === "#editor" ? "editor" : "menu"));
@@ -472,6 +473,34 @@ export class BootScene extends Phaser.Scene {
       g.fill();
       tex.refresh();
     }
+  }
+
+  /** A padlock for levels not yet open, 44 by 54. */
+  private makePadlock(): void {
+    const tex = this.textures.createCanvas("padlock", 44, 54);
+    if (!tex) return;
+    const g = tex.getContext();
+    g.strokeStyle = "#8e99a8";
+    g.lineWidth = 6;
+    g.beginPath();
+    g.arc(22, 22, 11, Math.PI, 0);
+    g.lineTo(33, 28);
+    g.moveTo(11, 22);
+    g.lineTo(11, 28);
+    g.stroke();
+    g.fillStyle = "#f5c542";
+    g.strokeStyle = "#b8860b";
+    g.lineWidth = 2.5;
+    g.beginPath();
+    g.roundRect(4, 26, 36, 26, 6);
+    g.fill();
+    g.stroke();
+    g.fillStyle = "#6b4a1a";
+    g.beginPath();
+    g.arc(22, 36, 4, 0, Math.PI * 2);
+    g.fill();
+    g.fillRect(20.5, 37, 3, 8);
+    tex.refresh();
   }
 
   /** A sugar sprinkle: a white capsule with a highlight, tinted in use. */

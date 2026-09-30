@@ -28,7 +28,7 @@ export interface PlayRequest {
   /** Position in the campaign, for saved progress and the next level. */
   campaignIndex?: number;
   /** Where the Menu button and the end of an editor test lead. */
-  returnTo: "menu" | "editor";
+  returnTo: "menu" | "editor" | "map";
   /** Let the solver play the level. */
   demo?: boolean;
 }
@@ -463,7 +463,7 @@ export class LevelScene extends Phaser.Scene {
   }
 
   private addBackButton(): void {
-    const label = this.request.returnTo === "editor" ? "Back to editor" : "Menu";
+    const label = { editor: "Back to editor", map: "Map", menu: "Menu" }[this.request.returnTo];
     const mute = h("button", { type: "button", class: "back-button mute-button", "aria-pressed": String(isMuted()) }, isMuted() ? "Sound off" : "Sound on") as HTMLButtonElement;
     const toggle = () => {
       setMuted(!isMuted());
@@ -548,7 +548,7 @@ export class LevelScene extends Phaser.Scene {
         this.holdPointer = null;
         const next = this.nextLevel();
         if (this.runner.finished && next !== null) {
-          this.scene.start("level", { level: CAMPAIGN[next].level, campaignIndex: next, returnTo: "menu" });
+          this.scene.start("level", { level: CAMPAIGN[next].level, campaignIndex: next, returnTo: this.request.returnTo });
           return;
         }
         this.restart();

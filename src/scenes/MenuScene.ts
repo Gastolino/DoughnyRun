@@ -3,7 +3,8 @@ import { buildLevel } from "../levels/format";
 import { CAMPAIGN } from "../levels/index";
 import { TOPPINGS } from "../logic/toppings";
 import { VIEW } from "../logic/tuning";
-import { bestScore, customLevels, deleteCustomLevel, isUnlocked } from "../progress";
+import { medalFor } from "../logic/medals";
+import { bestScore, customLevels, deleteCustomLevel } from "../progress";
 import { h, overlay } from "../ui";
 import { drawRainbow, RAINBOW_SCALE } from "./rainbowText";
 import type { EditorRequest } from "./EditorScene";
@@ -11,8 +12,8 @@ import type { PlayRequest } from "./LevelScene";
 import { EYES_OFFSET } from "./BootScene";
 import { addSkySprinkles, drawBackdrop, drawGround } from "./draw";
 
-// The title screen: the campaign in order (each level opens when the one
-// before it is finished), the player's own levels, and the editor.
+// The title screen: the way into World 1's map, the player's own levels,
+// and the editor.
 export class MenuScene extends Phaser.Scene {
   constructor() {
     super("menu");
@@ -77,34 +78,26 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private showMenu(): void {
+    // World 1 at a glance: its medals so far, and the way to the map.
+    const medals = CAMPAIGN.map((c) => medalFor(c.level, bestScore(c.id) || null));
+    const count = (m: string) => medals.filter((x) => x === m).length;
+    const finished = medals.filter(Boolean).length;
     const campaign = h(
-      "ol",
+      "div",
       { class: "level-list" },
-      ...CAMPAIGN.map((c, i) => {
-        const open = isUnlocked(i);
-        const best = bestScore(c.id);
-        const topping = TOPPINGS[c.level.topping];
-        return h(
-          "li",
-          {},
-          h(
-            "button",
-            {
-              type: "button",
-              class: "level-card",
-              disabled: !open,
-              onclick: () => this.play({ level: c.level, campaignIndex: i, returnTo: "menu" }),
-            },
-            h("span", { class: "level-id" }, c.id),
-            h("span", { class: "level-name" }, c.level.name),
-            h(
-              "span",
-              { class: "level-meta" },
-              open ? `${topping.name} · ${best ? `Best ${best}` : "Not finished yet"}` : `Finish ${CAMPAIGN[i - 1].id} to open`,
-            ),
-          ),
-        );
-      }),
+      h(
+        "button",
+        { type: "button", class: "level-card", onclick: () => this.scene.start("map") },
+        h("span", { class: "level-id" }, "1"),
+        h("span", { class: "level-name" }, "World 1: Sugar Land"),
+        h(
+          "span",
+          { class: "level-meta" },
+          finished
+            ? `${finished} of ${CAMPAIGN.length} finished · ${count("gold")} gold, ${count("silver")} silver, ${count("bronze")} bronze`
+            : `${CAMPAIGN.filter((c) => !c.level.chaser).length} levels and a boss`,
+        ),
+      ),
     );
 
     const mine = customLevels();
@@ -152,7 +145,7 @@ export class MenuScene extends Phaser.Scene {
         { class: "menu-card", role: "dialog", "aria-label": "Doughny Run menu" },
         this.title(),
         h("p", { class: "muted" }, "Thread the sausages through the hole. Grind them dead centre to go faster."),
-        h("h2", {}, "Levels"),
+        h("h2", {}, "Worlds"),
         campaign,
         h("h2", {}, "Your levels"),
         custom,

@@ -77,6 +77,15 @@ into a sausage: the doughnut smashes through it and drops to first gear.
 A smashed sausage counts as dealt with. Falling into a void, hitting a cliff
 or skipping a sausage still ends the run.
 
+## World map
+
+The menu opens World 1, Sugar Land: a sprinkle path winding over the
+doughnut hills with a glazed stop for each level, in the colour of its
+topping. Finished levels show their medal, levels not yet open wear a
+padlock, and the denture boss waits at the end. Doughny stands on the next
+level to play; tap a stop, or use the arrow keys, and tap again or press
+Enter to play it.
+
 ## Medals
 
 Every finish earns a medal, set against the level's perfect score: every

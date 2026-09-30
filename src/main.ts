@@ -7,6 +7,7 @@ import { refitOnResize, setUpPage } from "./platform";
 import { BootScene } from "./scenes/BootScene";
 import { EditorScene } from "./scenes/EditorScene";
 import { LevelScene } from "./scenes/LevelScene";
+import { MapScene } from "./scenes/MapScene";
 import { MenuScene } from "./scenes/MenuScene";
 import { unlockAudioOnFirstPress } from "./sound";
 
@@ -31,7 +32,7 @@ function start(): void {
     // The level scene runs its own fixed-step clock and interpolates between
     // steps; Phaser's smoothing would slow the game down at 30 fps.
     fps: { smoothStep: false },
-    scene: [BootScene, MenuScene, LevelScene, EditorScene],
+    scene: [BootScene, MenuScene, MapScene, LevelScene, EditorScene],
   });
   refitOnResize(game);
 }
