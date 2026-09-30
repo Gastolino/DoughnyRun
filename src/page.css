@@ -72,7 +72,7 @@ body {
   padding: 24px;
   background: var(--page);
   color: var(--ink);
-  font: 20px/1.4 "Bubble Toy", "Comic Sans MS", cursive;
+  font: 700 20px/1.4 "Comic Neue", "Comic Sans MS", cursive;
   text-align: center;
 }
 #rotate[hidden] {
@@ -112,8 +112,7 @@ body {
 
 /* ---- Page UI above the game: menu, back button, editor ---- */
 .overlay {
-  letter-spacing: 0.04em;
-  font: 17px/1.5 "Bubble Toy", "Comic Sans MS", cursive;
+  font: 700 17px/1.5 "Comic Neue", "Comic Sans MS", cursive;
   color: var(--ink);
 }
 .overlay button,
@@ -225,6 +224,17 @@ body {
   border-radius: 14px !important;
   padding: 10px 14px !important;
 }
+/* Titles, single words and names use the bubble face; sentences do not. */
+.menu-card h2,
+.level-id,
+.level-name {
+  font-family: "Bubble Toy", "Comic Sans MS", cursive;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+}
+.level-name {
+  font-size: 18px;
+}
 .level-id {
   grid-row: span 2;
   align-self: center;
@@ -236,7 +246,7 @@ body {
   font-weight: 600;
 }
 .level-meta {
-  font-size: 15px;
+  font-size: 14px;
   color: #d9b8cc;
 }
 .custom-row {

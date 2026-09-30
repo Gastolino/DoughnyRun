@@ -1,4 +1,6 @@
 import Phaser from "phaser";
+// Comic Neue, for sentences; Bubble Toy is declared in page.css.
+import "@fontsource/comic-neue/latin-700.css";
 import "./page.css";
 import { VIEW } from "./logic/tuning";
 import { refitOnResize, setUpPage } from "./platform";

@@ -104,8 +104,11 @@ page is hidden, and asks to be turned sideways in portrait.
 
 ## Look and feel
 
-Lettering is Bubble Toy Solid Bold by ana & yvy (anayvy.shop), bundled in
-`src/assets/fonts`, trimmed to the characters the game uses.
+Big titles, single words and scores use Bubble Toy Solid Bold by ana & yvy
+(anayvy.shop), bundled in `src/assets/fonts` and trimmed to the characters
+the game uses. Sentences use Comic Neue Bold (from `@fontsource/comic-neue`,
+under the SIL Open Font License), because Bubble Toy is hard to read in a
+sentence.
 Banners and call-outs use rainbow letters with a rainbow outline and land
 with a splash of sugar sprinkles. In top gear the doughnut puts on
 rainbow-shimmer sunglasses.

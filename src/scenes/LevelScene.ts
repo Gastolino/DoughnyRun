@@ -13,7 +13,7 @@ import { recordFinish } from "../progress";
 import { solveAsync } from "../solveAsync";
 import { h, overlay } from "../ui";
 import { ART_HALF_WIDTH, EYES_OFFSET, SHADES_FRAMES } from "./BootScene";
-import { FUN_FONT } from "./fonts";
+import { READABLE_FONT, TITLE_FONT } from "./fonts";
 import { showRainbow } from "./rainbowText";
 import { addSkySprinkles, DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
 import { COLORS, SPRINKLE_COLORS } from "./palette";
@@ -249,7 +249,7 @@ export class LevelScene extends Phaser.Scene {
     // set larger there, and the hint names the finger rather than keys.
     const touch = coarsePointer();
     const hudStyle = {
-      fontFamily: FUN_FONT,
+      fontFamily: TITLE_FONT,
       fontSize: touch ? "26px" : "20px",
       color: COLORS.text,
       stroke: "#ffffff",
@@ -289,7 +289,8 @@ export class LevelScene extends Phaser.Scene {
     // The controls, shown only until the run starts.
     this.hint = this.add
       .text(VIEW.width - 16, 12, hint, {
-        fontFamily: FUN_FONT,
+        fontFamily: READABLE_FONT,
+        fontStyle: "bold",
         fontSize: touch ? "20px" : "15px",
         color: COLORS.text,
         stroke: "#ffffff",
@@ -309,11 +310,11 @@ export class LevelScene extends Phaser.Scene {
 
     const demo = this.request.demo || new URLSearchParams(window.location.search).has("demo");
     if (demo) {
-      this.showBanner("Working out a route…");
+      this.showBanner("Working out a route…", 0);
       void solveAsync(this.level, this.options).then((result) => {
         if (!this.sys.isActive()) return;
         if (!result.inputs) {
-          this.showBanner("The solver found no way through this level.");
+          this.showBanner("The solver found no way through this level.", 0);
           return;
         }
         this.demoInputs = result.inputs;
@@ -323,7 +324,7 @@ export class LevelScene extends Phaser.Scene {
       });
     } else {
       const jumpHint = coarsePointer() ? "Hold" : "Hold Space";
-      this.showBanner(`${this.level.name}\n${this.verb()} to start\n${jumpHint} for a higher jump`);
+      this.showBanner(`${this.level.name}\n${this.verb()} to start\n${jumpHint} for a higher jump`, 1);
     }
   }
 
@@ -456,7 +457,7 @@ export class LevelScene extends Phaser.Scene {
     // Resume drawing from where the doughnut stands, not a step behind it.
     this.prevX = this.runner.x;
     this.prevY = this.runner.y;
-    this.showBanner(`Paused\n${this.verb()} to continue`);
+    this.showBanner(`Paused\n${this.verb()} to continue`, 1);
   }
 
   private demoInput(): { held: boolean; pressed: boolean } {
@@ -563,7 +564,7 @@ export class LevelScene extends Phaser.Scene {
       }
       case "skip":
         this.sausages[e.index].setAlpha(0.3);
-        this.popText("Skipped: chain lost", false);
+        this.popText("Skipped: chain lost", false, 0);
         break;
       case "save":
         this.onSave(e);
@@ -572,11 +573,12 @@ export class LevelScene extends Phaser.Scene {
         this.deaths += 1;
         this.cameras.main.shake(140, 0.006);
         this.end();
-        this.eatDoughnut(() => this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`));
+        this.eatDoughnut(() => this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`, 0));
         break;
       case "finish":
         this.end();
-        this.showBanner(this.finishText());
+        // "Level clear!", the score and the threaded count are titles; the rest are sentences.
+        this.showBanner(this.finishText(), 3);
         break;
     }
   }
@@ -926,13 +928,13 @@ export class LevelScene extends Phaser.Scene {
     this.tweens.add({ targets, scaleX: 1, scaleY: 1, duration: 160, ease: "Quad.easeOut" });
   }
 
-  private popText(text: string, big: boolean): void {
+  private popText(text: string, big: boolean, titleLines = Infinity): void {
     // Pinned to the screen, since the camera keeps the doughnut in one place.
     const x = VIEW.playerScreenX + 40;
     // Kept below the score display, which the text drifts towards as it fades.
     const size = (big ? 28 : 21) + (coarsePointer() ? 6 : 0);
     const y = Math.max(170, this.runner.y - this.cameras.main.scrollY - DOUGHNUT.outerRadius - 40);
-    const t = showRainbow(this, x, y, text, size, DEPTH.fx, big, "bubbly");
+    const t = showRainbow(this, x, y, text, size, DEPTH.fx, big, "bubbly", titleLines);
     const key = t.texture.key;
     const done = () => {
       t.destroy();
@@ -943,10 +945,11 @@ export class LevelScene extends Phaser.Scene {
     this.tweens.add({ targets: t, y: y - 50, alpha: 0, delay: 500, duration: 700, onComplete: done });
   }
 
-  private showBanner(text: string): void {
+  /** Shows a banner whose first `titleLines` lines are titles in the bubble face. */
+  private showBanner(text: string, titleLines: number): void {
     this.hideBanner();
     const size = coarsePointer() ? 30 : 26;
-    this.banner = showRainbow(this, VIEW.width / 2, VIEW.height / 2 - 50, text, size, DEPTH.hud);
+    this.banner = showRainbow(this, VIEW.width / 2, VIEW.height / 2 - 50, text, size, DEPTH.hud, true, "plain", titleLines);
   }
 
   private hideBanner(): void {
