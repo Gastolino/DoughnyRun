@@ -1,4 +1,6 @@
 import Phaser from "phaser";
+import { TOPPING_IDS } from "../logic/toppings";
+import type { ToppingId } from "../logic/toppings";
 import { DOUGHNUT } from "../logic/tuning";
 import { COLORS, css } from "./palette";
 
@@ -21,15 +23,17 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.makeDoughnutHalf("doughnut-back", "back");
-    this.makeDoughnutHalf("doughnut-front", "front");
+    for (const topping of TOPPING_IDS) {
+      this.makeDoughnutHalf(`doughnut-back-${topping}`, "back", topping);
+      this.makeDoughnutHalf(`doughnut-front-${topping}`, "front", topping);
+    }
     this.makeEyes();
     this.makeCrumb();
     this.makeSprinkle();
-    this.scene.start("level");
+    this.scene.start(window.location.hash === "#editor" ? "editor" : "menu");
   }
 
-  private makeDoughnutHalf(key: string, half: "back" | "front"): void {
+  private makeDoughnutHalf(key: string, half: "back" | "front", topping: ToppingId): void {
     const w = ART_HALF_WIDTH * 2 + PAD * 2;
     const h = DOUGHNUT.outerRadius * 2 + PAD * 2;
     const tex = this.textures.createCanvas(key, w, h);
@@ -61,8 +65,17 @@ export class BootScene extends Phaser.Scene {
 
     // Icing on the near face, inset from the dough.
     ellipsePair(cx + 2, cy, ART_HALF_WIDTH - 6, DOUGHNUT.outerRadius - 5, cx + 1, ART_HOLE_HALF_WIDTH + 3, DOUGHNUT.holeRadius + 4);
-    ctx.fillStyle = css(COLORS.icing);
+    ctx.fillStyle = css(topping === "glaze" ? COLORS.glaze : COLORS.icing);
     ctx.fill("evenodd");
+    if (topping === "glaze") {
+      // A glossy streak along the upper left of the glaze.
+      ctx.beginPath();
+      ctx.ellipse(cx + 1, cy, ART_HALF_WIDTH - 10, DOUGHNUT.outerRadius - 9, 0, Math.PI * 1.05, Math.PI * 1.45);
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = css(COLORS.glazeShine);
+      ctx.stroke();
+    }
 
     // Shadow inside the hole on the far side, which gives the ring its depth.
     if (half === "back") {

@@ -6,6 +6,8 @@ export const COLORS = {
   dough: 0xe0a458,
   doughShade: 0xb97a36,
   icing: 0xff7eb6,
+  glaze: 0x5b3120,
+  glazeShine: 0xb07a5a,
   ground: 0x8a5a3c,
   groundTop: 0xfff1f7,
   sausage: 0xc97447,

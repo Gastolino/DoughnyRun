@@ -21,8 +21,13 @@ export function isBlocked(): boolean {
   return coarsePointer() && portrait.matches && screenPortrait() && !portraitDismissed;
 }
 
-export function onBlockedChange(listener: (blocked: boolean) => void): void {
+/** Calls the listener when the rotate prompt appears or goes; returns an unsubscribe. */
+export function onBlockedChange(listener: (blocked: boolean) => void): () => void {
   blockedListeners.push(listener);
+  return () => {
+    const i = blockedListeners.indexOf(listener);
+    if (i >= 0) blockedListeners.splice(i, 1);
+  };
 }
 
 export function gameElement(): HTMLElement {

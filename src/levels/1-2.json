@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "name": "Glaze Heights",
+  "length": 7200,
+  "topping": "glaze",
+  "elements": [
+    { "type": "sausage", "x": 600, "y": 412, "length": 200 },
+    { "type": "gap", "x": 1200, "width": 700 },
+    { "type": "gap", "x": 2150, "width": 800 },
+    { "type": "sausage", "x": 2300, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 2580, "y": 110, "length": 40 },
+    { "type": "sausage", "x": 3500, "y": 150, "length": 40 },
+    { "type": "gap", "x": 4150, "width": 800 },
+    { "type": "sausage", "x": 4300, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 4580, "y": 100, "length": 40 },
+    { "type": "sausage", "x": 5400, "y": 412, "length": 160 },
+    { "type": "gap", "x": 5850, "width": 650 },
+    { "type": "sausage", "x": 6000, "y": 231, "length": 40 }
+  ]
+}

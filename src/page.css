@@ -103,3 +103,247 @@ body {
 }
 #rotate .phone { animation: none; transform: rotate(90deg); }
 }
+
+/* ---- Page UI above the game: menu, back button, editor ---- */
+.overlay {
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+}
+.overlay button,
+.editor-bar button {
+  font: inherit;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid #6b4a63;
+  border-radius: 18px;
+  background: #3d2a40;
+  color: var(--ink);
+  cursor: pointer;
+}
+.overlay button:hover:not(:disabled),
+.editor-bar button:hover:not(:disabled) {
+  background: #54395a;
+}
+.overlay button:disabled,
+.editor-bar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.overlay button:focus-visible,
+.editor-bar button:focus-visible,
+.editor-bar input:focus-visible,
+.editor-bar select:focus-visible,
+.dialog textarea:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+#menu {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+  background: rgb(43 29 46 / 0.55);
+  overflow-y: auto;
+}
+.menu-card {
+  width: min(520px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 20px 24px;
+  border-radius: 20px;
+  background: var(--page);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
+}
+.menu-card h1 {
+  margin: 0 0 4px;
+  font-size: 30px;
+  color: var(--accent);
+  text-wrap: balance;
+}
+.menu-card h2 {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d9b8cc;
+}
+.muted {
+  color: #d9b8cc;
+  margin: 0;
+}
+.level-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.level-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  text-align: left;
+  border-radius: 14px !important;
+  padding: 10px 14px !important;
+}
+.level-id {
+  grid-row: span 2;
+  align-self: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.level-name {
+  font-weight: 600;
+}
+.level-meta {
+  font-size: 13px;
+  color: #d9b8cc;
+}
+.custom-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.custom-row .level-card {
+  flex: 1;
+  min-width: 0;
+  grid-template-columns: 1fr;
+}
+.menu-actions {
+  margin-top: 18px;
+}
+#level-ui .back-button {
+  position: fixed;
+  z-index: 4;
+  left: max(16px, env(safe-area-inset-left, 0px));
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  font-size: 14px;
+  min-height: 32px;
+  padding: 4px 12px;
+  opacity: 0.85;
+}
+body.editing #game {
+  box-sizing: border-box;
+}
+.editor-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 8px max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px));
+  background: #241826;
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+}
+#editor-top {
+  top: 0;
+  padding-top: max(8px, env(safe-area-inset-top, 0px));
+}
+#editor-bottom {
+  bottom: 0;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+}
+.editor-bar .group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.editor-bar button {
+  min-height: 30px;
+  padding: 3px 11px;
+  font-size: 13px;
+}
+.editor-bar button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.editor-bar input,
+.editor-bar select {
+  font: inherit;
+  min-height: 28px;
+  padding: 2px 6px;
+  border: 1px solid #6b4a63;
+  border-radius: 6px;
+  background: #3d2a40;
+  color: var(--ink);
+}
+.editor-bar input[type="number"] {
+  width: 76px;
+  font-variant-numeric: tabular-nums;
+}
+.editor-bar input[type="text"] {
+  width: 150px;
+}
+.editor-bar .selection {
+  /* Always its own row, so selecting something never resizes the view. */
+  flex-basis: 100%;
+  min-height: 32px;
+  order: 3;
+}
+#editor-status {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin: 0;
+  color: #d9b8cc;
+}
+#editor-status[data-tone="good"] {
+  color: #9de6b0;
+}
+#editor-status[data-tone="bad"] {
+  color: #ff9d9d;
+}
+#editor-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.5);
+}
+.dialog {
+  width: min(640px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: var(--page);
+}
+.dialog h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.dialog textarea {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 10px;
+  font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: #1c121e;
+  color: var(--ink);
+  border: 1px solid #6b4a63;
+  border-radius: 8px;
+  padding: 8px;
+}
+.dialog .error {
+  color: #ff9d9d;
+  min-height: 1.4em;
+  margin: 6px 0 0;
+}
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}

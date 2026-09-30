@@ -1,0 +1,152 @@
+import { isToppingId } from "../logic/toppings";
+import type { ToppingId } from "../logic/toppings";
+import { DOUGHNUT, VIEW } from "../logic/tuning";
+import type { GroundSegment, LevelData, Sausage } from "../logic/types";
+
+// The level file format, shared by the levels in this folder and by the
+// editor's export. A level is a list of typed elements, so that new kinds of
+// element (ramps, speed boosts) can be added without changing old files:
+// each gets its own "type" and its own fields.
+//
+// {
+//   "format": 1,
+//   "name": "Sprinkle Hop",
+//   "length": 6400,
+//   "topping": "plain",
+//   "elements": [
+//     { "type": "gap", "x": 1300, "width": 140 },
+//     { "type": "sausage", "x": 2000, "y": 231, "length": 40 }
+//   ]
+// }
+//
+// Positions are world pixels. x grows to the right from the start; y grows
+// downwards, with the ground's surface at y = 460 and the top of the screen at
+// y = 0 when the camera sits at the ground.
+
+export const FORMAT_VERSION = 1;
+
+/** Height of the hole's centre for a doughnut rolling along the ground. */
+export const RUN_HEIGHT = VIEW.groundY - DOUGHNUT.outerRadius;
+
+export const COCKTAIL_THICKNESS = 22;
+
+export interface GapElement {
+  type: "gap";
+  x: number;
+  width: number;
+}
+
+export interface SausageElement {
+  type: "sausage";
+  x: number;
+  /** Vertical centre. */
+  y: number;
+  length: number;
+  /** Defaults to a cocktail sausage's thickness. */
+  thickness?: number;
+}
+
+export type LevelElement = GapElement | SausageElement;
+
+export interface LevelFile {
+  format: number;
+  name: string;
+  length: number;
+  topping: ToppingId;
+  elements: LevelElement[];
+}
+
+export const LIMITS = {
+  minLength: 1200,
+  maxLength: 60000,
+  minSausageLength: 20,
+  maxSausageLength: 4000,
+  minGapWidth: 20,
+  /** Highest a sausage may hang: far above anything a double jump reaches. */
+  minY: -600,
+  maxY: VIEW.groundY - 8,
+} as const;
+
+export class LevelFormatError extends Error {}
+
+/**
+ * Checks untrusted JSON (a pasted export, a saved level) and returns a level
+ * file, or throws a LevelFormatError that says what is wrong and where.
+ */
+export function parseLevelFile(input: unknown): LevelFile {
+  const fail = (message: string): never => {
+    throw new LevelFormatError(message);
+  };
+  const obj = (v: unknown, where: string): Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : fail(`${where} must be an object.`);
+  const num = (o: Record<string, unknown>, key: string, where: string, min: number, max: number): number => {
+    const v = o[key];
+    if (typeof v !== "number" || !Number.isFinite(v)) return fail(`${where}: "${key}" must be a number.`);
+    if (v < min || v > max) return fail(`${where}: "${key}" is ${v}, but must be between ${min} and ${max}.`);
+    return v;
+  };
+
+  const root = obj(input, "The level");
+  if (root.format !== FORMAT_VERSION) fail(`The level's "format" must be ${FORMAT_VERSION}.`);
+  const name = typeof root.name === "string" && root.name.trim() ? root.name.trim().slice(0, 60) : fail('The level needs a "name".');
+  const length = num(root, "length", "The level", LIMITS.minLength, LIMITS.maxLength);
+  const topping = isToppingId(root.topping) ? root.topping : fail(`The level's "topping" must be "plain" or "glaze".`);
+  if (!Array.isArray(root.elements)) fail('The level needs an "elements" list.');
+
+  const elements = (root.elements as unknown[]).map((raw, i): LevelElement => {
+    const where = `Element ${i + 1}`;
+    const e = obj(raw, where);
+    switch (e.type) {
+      case "gap":
+        return {
+          type: "gap",
+          x: num(e, "x", where, 0, length),
+          width: num(e, "width", where, LIMITS.minGapWidth, LIMITS.maxLength),
+        };
+      case "sausage": {
+        const s: SausageElement = {
+          type: "sausage",
+          x: num(e, "x", where, 0, length),
+          y: num(e, "y", where, LIMITS.minY, LIMITS.maxY),
+          length: num(e, "length", where, LIMITS.minSausageLength, LIMITS.maxSausageLength),
+        };
+        if (e.thickness !== undefined) s.thickness = num(e, "thickness", where, 8, 44);
+        return s;
+      }
+      default:
+        return fail(`${where} has an unknown "type": ${JSON.stringify(e.type)}.`);
+    }
+  });
+  return { format: FORMAT_VERSION, name, length, topping, elements };
+}
+
+/** Turns a level file into a playable level: ground from the gaps, sorted sausages. */
+export function buildLevel(file: LevelFile): LevelData {
+  const gaps = file.elements.filter((e): e is GapElement => e.type === "gap").sort((a, b) => a.x - b.x);
+  const ground: GroundSegment[] = [];
+  let x = 0;
+  for (const gap of gaps) {
+    if (gap.x > x) ground.push({ x, width: gap.x - x });
+    x = Math.max(x, gap.x + gap.width);
+  }
+  // The ground runs on past the finish so the doughnut has somewhere to land.
+  ground.push({ x, width: Math.max(0, file.length + VIEW.width - x) });
+  const sausages: Sausage[] = file.elements
+    .filter((e): e is SausageElement => e.type === "sausage")
+    .map((e) => ({ x: e.x, y: e.y, length: e.length, thickness: e.thickness ?? COCKTAIL_THICKNESS }))
+    .sort((a, b) => a.x - b.x);
+  return { name: file.name, length: file.length, topping: file.topping, ground, sausages };
+}
+
+/** Writes a level file as tidy JSON, one element per line. */
+export function stringifyLevelFile(file: LevelFile): string {
+  const { elements, ...head } = file;
+  const lines = elements.map((e) => "    " + JSON.stringify(e));
+  const top = JSON.stringify(head, null, 2).slice(0, -2);
+  return `${top},\n  "elements": [\n${lines.join(",\n")}\n  ]\n}\n`;
+}
+
+/** True when the ground beneath the whole sausage is missing. */
+export function isOverVoid(level: LevelData, s: Sausage): boolean {
+  return !level.ground.some((g) => g.x < s.x + s.length && g.x + g.width > s.x);
+}

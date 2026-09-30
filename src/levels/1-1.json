@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "name": "Sprinkle Meadow",
+  "length": 6400,
+  "topping": "plain",
+  "elements": [
+    { "type": "sausage", "x": 700, "y": 412, "length": 220 },
+    { "type": "gap", "x": 1300, "width": 140 },
+    { "type": "gap", "x": 1830, "width": 380 },
+    { "type": "sausage", "x": 2000, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 2700, "y": 300, "length": 40 },
+    { "type": "gap", "x": 3230, "width": 380 },
+    { "type": "sausage", "x": 3400, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 3900, "y": 412, "length": 160 },
+    { "type": "gap", "x": 4335, "width": 370 },
+    { "type": "sausage", "x": 4500, "y": 233, "length": 40 },
+    { "type": "sausage", "x": 5100, "y": 310, "length": 40 },
+    { "type": "sausage", "x": 5700, "y": 412, "length": 200 }
+  ]
+}

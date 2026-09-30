@@ -3,7 +3,9 @@ import "./page.css";
 import { VIEW } from "./logic/tuning";
 import { refitOnResize, setUpPage } from "./platform";
 import { BootScene } from "./scenes/BootScene";
+import { EditorScene } from "./scenes/EditorScene";
 import { LevelScene } from "./scenes/LevelScene";
+import { MenuScene } from "./scenes/MenuScene";
 
 function start(): void {
   setUpPage();
@@ -24,7 +26,7 @@ function start(): void {
     // The level scene runs its own fixed-step clock and interpolates between
     // steps; Phaser's smoothing would slow the game down at 30 fps.
     fps: { smoothStep: false },
-    scene: [BootScene, LevelScene],
+    scene: [BootScene, MenuScene, LevelScene, EditorScene],
   });
   refitOnResize(game);
 }

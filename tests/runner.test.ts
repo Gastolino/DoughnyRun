@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createRunner, gradeFor, speedOf, stepRunner } from "../src/logic/runner";
 import type { RunnerEvent, RunnerState } from "../src/logic/runner";
+import { solveLevel, STEPS_PER_DECISION } from "../src/logic/solver";
 import { DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
 import type { LevelData, Sausage } from "../src/logic/types";
 
-const flat: LevelData = { name: "flat", length: 100000, ground: [{ x: 0, width: 100000 }], sausages: [] };
+const flat: LevelData = { name: "flat", length: 100000, topping: "plain", ground: [{ x: 0, width: 100000 }], sausages: [] };
 const restY = VIEW.groundY - DOUGHNUT.outerRadius;
 const withSausages = (...sausages: Sausage[]): LevelData => ({ ...flat, sausages });
 const cocktail = (x: number, y: number, length = 200): Sausage => ({ x, y, length, thickness: 16 });
@@ -155,5 +156,48 @@ describe("grinding", () => {
     const s = createRunner(level);
     for (let i = 0; i < 240; i++) stepRunner(s, { held: false, pressed: false }, level, { airJumps: 0, solidSausage: 0 });
     expect(s.dead).toBe("sausage");
+  });
+});
+
+describe("air jumps and air combos", () => {
+  // Both sausages hang over one long void, so threading both means doing it
+  // in a single flight. The solver finds such a run; the test replays it.
+  function chain(): { events: RunnerEvent[]; s: RunnerState } {
+    const level: LevelData = {
+      ...flat,
+      length: 2400,
+      topping: "glaze",
+      ground: [{ x: 0, width: 800 }, { x: 1600, width: 100000 }],
+      sausages: [cocktail(1000, 231, 40), cocktail(1280, 110, 40)].map((z) => ({ ...z, thickness: 22 })),
+    };
+    const options = { airJumps: 1, mustThread: [0, 1] };
+    const inputs = solveLevel(level, options).inputs ?? [];
+    const s = createRunner(level, options);
+    const events: RunnerEvent[] = [];
+    for (let step = 0; step < inputs.length * STEPS_PER_DECISION && !s.dead && !s.finished; step++) {
+      const d = inputs[Math.floor(step / STEPS_PER_DECISION)];
+      events.push(...stepRunner(s, { held: d.held, pressed: d.pressed && step % STEPS_PER_DECISION === 0 }, level, options));
+    }
+    return { events, s };
+  }
+
+  it("gives the second grind of one flight an air combo", () => {
+    const { events, s } = chain();
+    const ends = events.filter((e) => e.type === "grindEnd");
+    expect(s.dead).toBeNull();
+    expect(events.map((e) => e.type)).toContain("airJump");
+    expect(ends).toHaveLength(2);
+    expect(ends[0]).toMatchObject({ airCombo: 0 });
+    expect(ends[1]).toMatchObject({ airCombo: 2 });
+    expect(s.finished).toBe(true);
+    expect(s.airGrinds).toBe(0); // reset on landing
+  });
+
+  it("crashes on a skipped sausage the options say must be threaded", () => {
+    const level = withSausages(cocktail(300, VIEW.groundY - 8, 40));
+    const s = createRunner(level);
+    run(s, level, 30);
+    for (let i = 0; i < 200; i++) stepRunner(s, { held: true, pressed: i === 0 }, level, { airJumps: 0, mustThread: [0] });
+    expect(s.dead).toBe("missed");
   });
 });

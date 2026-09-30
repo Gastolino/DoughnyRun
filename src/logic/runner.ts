@@ -15,6 +15,11 @@ export interface RunnerOptions {
    * impossible.
    */
   solidSausage?: number;
+  /**
+   * Treats passing any of these sausages without threading it as a crash.
+   * The editor uses it to ask whether every sausage can be threaded in one run.
+   */
+  mustThread?: readonly number[];
 }
 
 export const PLAIN: RunnerOptions = { airJumps: 0 };
@@ -26,7 +31,7 @@ export interface RunnerInput {
   pressed: boolean;
 }
 
-export type DeathCause = "sausage" | "fell" | "wall";
+export type DeathCause = "sausage" | "fell" | "wall" | "missed";
 
 /** A sausage currently passing through the hole. */
 export interface Grind {
@@ -53,6 +58,8 @@ export interface RunnerState {
   threaded: number[];
   score: number;
   chain: number;
+  /** Grinds finished since the doughnut last touched the ground. */
+  airGrinds: number;
   dead: DeathCause | null;
   finished: boolean;
 }
@@ -64,6 +71,8 @@ export interface GrindResult {
   offset: number;
   points: number;
   chain: number;
+  /** Grinds in the current flight when this is the second or later, else 0. */
+  airCombo: number;
 }
 
 export type RunnerEvent =
@@ -98,6 +107,7 @@ export function createRunner(level: LevelData, options: RunnerOptions = PLAIN): 
     threaded: [],
     score: 0,
     chain: 0,
+    airGrinds: 0,
     dead: null,
     finished: false,
   };
@@ -172,6 +182,7 @@ export function stepRunner(
       s.vy = 0;
       if (!s.grounded) events.push({ type: "land" });
       s.grounded = true;
+      s.airGrinds = 0;
       s.canCutJump = false;
       s.airJumpsLeft = options.airJumps;
     }
@@ -209,6 +220,7 @@ export function stepRunner(
     const sausage = level.sausages[s.nextSausage];
     if (sausage.x + sausage.length > ring.cx - ring.halfWidth) break;
     if (!s.threaded.includes(s.nextSausage)) {
+      if (options.mustThread?.includes(s.nextSausage)) return die(s, "missed", events);
       s.chain = 0;
       shiftGear(s, GRIND.skipGears);
       events.push({ type: "skip", index: s.nextSausage });
@@ -229,10 +241,14 @@ function finishGrind(s: RunnerState, grind: Grind, length: number): RunnerEvent 
   const g = gradeFor(offset);
   s.chain = g.keepsChain ? Math.min(GRIND.maxChain, s.chain + 1) : 0;
   const multiplier = g.points * (1 + GRIND.chainStep * Math.max(0, s.chain - 1));
-  const points = Math.round(length * GRIND.pointsPerPixel * multiplier);
+  // Threading a second sausage before touching the ground multiplies the
+  // points by the number of grinds in that one flight.
+  if (!s.grounded) s.airGrinds += 1;
+  const airCombo = s.airGrinds >= 2 ? s.airGrinds : 0;
+  const points = Math.round(length * GRIND.pointsPerPixel * multiplier * Math.max(1, airCombo));
   s.score += points;
   shiftGear(s, g.gears);
-  return { type: "grindEnd", index: grind.index, grade: g.grade, offset, points, chain: s.chain };
+  return { type: "grindEnd", index: grind.index, grade: g.grade, offset, points, chain: s.chain, airCombo };
 }
 
 export function speedOf(s: RunnerState): number {
