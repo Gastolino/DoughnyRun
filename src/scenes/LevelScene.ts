@@ -125,6 +125,9 @@ export class LevelScene extends Phaser.Scene {
   private biteCrumbs!: Phaser.GameObjects.Particles.ParticleEmitter;
   // The doughnut being eaten after a crash, and the timers driving the bites.
   private eaten: { image: Phaser.GameObjects.RenderTexture; timers: Phaser.Time.TimerEvent[] } | null = null;
+  // The victory lap at the flag: the doughnut's stand-in image, its sprinkle
+  // trail, and the textures drawn for it.
+  private victory: { image: Phaser.GameObjects.Image; trail: Phaser.GameObjects.Particles.ParticleEmitter; keys: string[] } | null = null;
   private puff!: Phaser.GameObjects.Particles.ParticleEmitter;
   // Sprinkles shed behind the doughnut, thicker in higher gears.
   private trail!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -173,6 +176,7 @@ export class LevelScene extends Phaser.Scene {
     );
     this.debug = this.add.graphics().setDepth(DEPTH.fx);
     this.eaten = null;
+    this.victory = null;
     this.biteCrumbs = this.add
       .particles(0, 0, "crumb", {
         speed: { min: 90, max: 320 },
@@ -518,6 +522,7 @@ export class LevelScene extends Phaser.Scene {
     this.pressLatch = false;
     this.hideBanner();
     this.stopEating();
+    this.stopVictory();
     this.setDoughnutVisible(true);
     this.sausages.forEach((g) => g.setAlpha(1).setVisible(true));
     this.wiggles.forEach((w) => w.rope.destroy());
@@ -575,11 +580,14 @@ export class LevelScene extends Phaser.Scene {
         this.end();
         this.eatDoughnut(() => this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`, 0));
         break;
-      case "finish":
+      case "finish": {
         this.end();
+        // Worked out now, so the result is saved even if the lap is skipped.
+        const text = this.finishText();
         // "Level clear!", the score and the threaded count are titles; the rest are sentences.
-        this.showBanner(this.finishText(), 3);
+        this.victoryLap(() => this.showBanner(text, 3));
         break;
+      }
     }
   }
 
@@ -825,6 +833,140 @@ export class LevelScene extends Phaser.Scene {
         done();
       }),
     );
+  }
+
+  /**
+   * Draws the doughnut as it looks right now (both halves, the sprinkles on
+   * the near half, the eyes and any sunglasses) onto a canvas, optionally
+   * slanted like italic type, and returns it as a texture key.
+   */
+  private snapshotDoughnut(slant: number): string {
+    const W = 200;
+    const H = 150;
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+    const cx = W / 2;
+    const cy = H / 2;
+    // Italic: the top leans forward, the bottom stays where it touches down.
+    ctx.setTransform(1, 0, -slant, 1, slant * (cy + DOUGHNUT.outerRadius), 0);
+    const draw = (key: string, x: number, y: number, scale = 1) => {
+      const src = this.textures.get(key).getSourceImage() as CanvasImageSource & { width: number; height: number };
+      ctx.drawImage(src, x - (src.width * scale) / 2, y - (src.height * scale) / 2, src.width * scale, src.height * scale);
+    };
+    const topping = this.level.topping;
+    draw(`doughnut-back-${topping}`, cx, cy);
+    draw(`doughnut-front-${topping}`, cx, cy);
+    for (const s of this.sprinkles) {
+      if (s.depth < DEPTH.front) continue;
+      ctx.save();
+      ctx.translate(cx + (s.x - this.back.x), cy + (s.y - this.back.y));
+      ctx.rotate(s.rotation);
+      ctx.fillStyle = `#${s.tintTopLeft.toString(16).padStart(6, "0")}`;
+      ctx.beginPath();
+      ctx.roundRect(-4, -1.5, 8, 3, 1.5);
+      ctx.fill();
+      ctx.restore();
+    }
+    draw("doughnut-eyes", cx + EYES_OFFSET.x, cy + EYES_OFFSET.y);
+    if (this.shadesOn && this.glassDrop.v < 0.5) {
+      draw(this.shades.texture.key, cx + EYES_OFFSET.x + 2, cy + EYES_OFFSET.y + 1, 1.5);
+    }
+    const key = `victory:${slant}:${this.time.now}`;
+    this.textures.addCanvas(key, canvas);
+    return key;
+  }
+
+  /**
+   * At the flag: a celebratory jump with a full spin while sprinkles burst
+   * from the flag, then the doughnut leans forward like italic type and
+   * dashes off to the right, leaving a long trail of candy sprinkles.
+   */
+  private victoryLap(done: () => void): void {
+    this.stopVictory();
+    const upright = this.snapshotDoughnut(0);
+    const italic = this.snapshotDoughnut(0.38);
+    const x = this.back.x;
+    const y = this.back.y;
+    this.setDoughnutVisible(false);
+    const image = this.add.image(x, y, upright).setDepth(DEPTH.front + 5);
+    const trail = this.add
+      .particles(0, 0, "pill", {
+        speedX: { min: -140, max: -20 },
+        speedY: { min: -90, max: 90 },
+        gravityY: 120,
+        lifespan: { min: 900, max: 1600 },
+        rotate: { min: 0, max: 360 },
+        scale: { start: 0.9, end: 0.35 },
+        alpha: { start: 1, end: 0 },
+        tint: [0xff5fa2, 0xffa24a, 0xffd23f, 0x6fd66f, 0x4fb3ff, 0xa87bff, 0xffffff],
+        frequency: -1,
+        quantity: 3,
+      })
+      .setDepth(DEPTH.front + 4);
+    this.victory = { image, trail, keys: [upright, italic] };
+
+    // Sprinkles burst from the top of the flag.
+    const flag = this.add
+      .particles(this.level.length + 30, VIEW.groundY - 150, "pill", {
+        speed: { min: 150, max: 420 },
+        angle: { min: 200, max: 340 },
+        gravityY: 600,
+        lifespan: 1100,
+        rotate: { min: 0, max: 360 },
+        scale: { start: 0.9, end: 0.4 },
+        tint: [0xff5fa2, 0xffa24a, 0xffd23f, 0x6fd66f, 0x4fb3ff, 0xa87bff, 0xffffff],
+        emitting: false,
+      })
+      .setDepth(DEPTH.front + 4);
+    flag.explode(40);
+    this.time.delayedCall(1300, () => flag.destroy());
+
+    this.tweens.chain({
+      targets: image,
+      tweens: [
+        // Crouch, then leap with a full spin.
+        { scaleX: 1.25, scaleY: 0.75, duration: 90, ease: "Quad.easeOut" },
+        { y: y - 130, scaleX: 0.9, scaleY: 1.15, rotation: Math.PI, duration: 300, ease: "Quad.easeOut" },
+        { y, scaleX: 1, scaleY: 1, rotation: Math.PI * 2, duration: 260, ease: "Quad.easeIn" },
+        // Land, squash, and lean forward into italics.
+        {
+          scaleX: 1.2,
+          scaleY: 0.82,
+          duration: 90,
+          ease: "Quad.easeOut",
+          onStart: () => image.setRotation(0),
+          onComplete: () => image.setTexture(italic),
+        },
+        { scaleX: 1, scaleY: 1, duration: 110, ease: "Back.easeOut" },
+        // Off to the right, faster and faster, trailing sprinkles.
+        {
+          x: x + VIEW.width + 200,
+          duration: 750,
+          ease: "Cubic.easeIn",
+          onStart: () => {
+            trail.startFollow(image, -50, 10);
+            trail.frequency = 8;
+          },
+          onComplete: () => {
+            trail.frequency = -1;
+            image.setVisible(false);
+            done();
+          },
+        },
+      ],
+    });
+  }
+
+  private stopVictory(): void {
+    if (!this.victory) return;
+    const { image, trail, keys } = this.victory;
+    this.tweens.killTweensOf(image);
+    image.destroy();
+    trail.destroy();
+    keys.forEach((k) => this.textures.exists(k) && this.textures.remove(k));
+    this.victory = null;
   }
 
   private stopEating(): void {
