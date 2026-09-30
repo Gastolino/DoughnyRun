@@ -1,10 +1,10 @@
 import Phaser from "phaser";
 import { buildLevel } from "../levels/format";
-import { CAMPAIGN } from "../levels/index";
+import { CAMPAIGN, WORLDS, worldLevels } from "../levels/index";
 import { TOPPINGS } from "../logic/toppings";
 import { VIEW } from "../logic/tuning";
 import { medalFor } from "../logic/medals";
-import { bestScore, customLevels, deleteCustomLevel } from "../progress";
+import { bestScore, customLevels, deleteCustomLevel, isFinished } from "../progress";
 import { h, overlay } from "../ui";
 import { drawRainbow, RAINBOW_SCALE } from "./rainbowText";
 import type { EditorRequest } from "./EditorScene";
@@ -12,7 +12,7 @@ import type { PlayRequest } from "./LevelScene";
 import { EYES_OFFSET } from "./BootScene";
 import { addSkySprinkles, drawBackdrop, drawGround } from "./draw";
 
-// The title screen: the way into World 1's map, the player's own levels,
+// The title screen: the way into each world's map, the player's own levels,
 // and the editor.
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -78,26 +78,36 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private showMenu(): void {
-    // World 1 at a glance: its medals so far, and the way to the map.
-    const medals = CAMPAIGN.map((c) => medalFor(c.level, bestScore(c.id) || null));
-    const count = (m: string) => medals.filter((x) => x === m).length;
-    const finished = medals.filter(Boolean).length;
+    // Each world at a glance: its medals so far, and the way to its map.
     const campaign = h(
       "div",
       { class: "level-list" },
-      h(
-        "button",
-        { type: "button", class: "level-card", onclick: () => this.scene.start("map") },
-        h("span", { class: "level-id" }, "1"),
-        h("span", { class: "level-name" }, "World 1: Sugar Land"),
-        h(
-          "span",
-          { class: "level-meta" },
-          finished
-            ? `${finished} of ${CAMPAIGN.length} finished · ${count("gold")} gold, ${count("silver")} silver, ${count("bronze")} bronze`
-            : `${CAMPAIGN.filter((c) => !c.level.chaser && !c.id.startsWith("B-")).length} levels, a boss and ${CAMPAIGN.filter((c) => c.id.startsWith("B-")).length} bonus levels`,
-        ),
-      ),
+      ...WORLDS.map((w) => {
+        const levels = worldLevels(w.id);
+        const medals = levels.map((c) => medalFor(c.level, bestScore(c.id) || null));
+        const count = (m: string) => medals.filter((x) => x === m).length;
+        const finished = medals.filter(Boolean).length;
+        const open = w.opensAfter === null || isFinished(w.opensAfter);
+        const bosses = levels.filter((c) => c.level.chaser).length;
+        const bonus = levels.filter((c) => c.id.startsWith("B-")).length;
+        const plain = levels.length - bosses - bonus;
+        const shape = [`${plain} levels`, bosses ? "a boss" : "", bonus ? `${bonus} bonus levels` : ""].filter(Boolean).join(", ");
+        return h(
+          "button",
+          { type: "button", class: "level-card", disabled: !open, onclick: () => this.scene.start("map", { world: w.id }) },
+          h("span", { class: "level-id" }, String(w.id)),
+          h("span", { class: "level-name" }, `World ${w.id}: ${w.name}`),
+          h(
+            "span",
+            { class: "level-meta" },
+            !open
+              ? `Finish ${w.opensAfter} to open`
+              : finished
+                ? `${finished} of ${levels.length} finished · ${count("gold")} gold, ${count("silver")} silver, ${count("bronze")} bronze`
+                : shape,
+          ),
+        );
+      }),
     );
 
     const mine = customLevels();

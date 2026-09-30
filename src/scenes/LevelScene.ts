@@ -500,7 +500,9 @@ export class LevelScene extends Phaser.Scene {
   }
 
   private leave(): void {
-    this.scene.start(this.request.returnTo);
+    const i = this.request.campaignIndex;
+    if (this.request.returnTo === "map") this.scene.start("map", { world: i === undefined ? 1 : CAMPAIGN[i].world });
+    else this.scene.start(this.request.returnTo);
   }
 
   private verb(): string {
@@ -576,9 +578,11 @@ export class LevelScene extends Phaser.Scene {
     }
   }
 
+  /** The next level in the same world, if there is one. */
   private nextLevel(): number | null {
     const i = this.request.campaignIndex;
-    return i !== undefined && i + 1 < CAMPAIGN.length ? i + 1 : null;
+    if (i === undefined || i + 1 >= CAMPAIGN.length) return null;
+    return CAMPAIGN[i + 1].world === CAMPAIGN[i].world ? i + 1 : null;
   }
 
   private restart(): void {

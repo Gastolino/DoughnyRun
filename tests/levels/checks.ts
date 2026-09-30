@@ -17,7 +17,9 @@ export function checkLevel(id: string): void {
   const index = CAMPAIGN.findIndex((c) => c.id === id);
   if (index < 0) throw new Error(`No campaign level ${id}`);
   const { level } = CAMPAIGN[index];
-  const before = index > 0 ? CAMPAIGN[index - 1].level.topping : null;
+  // A topping new to the campaign here is checked against the one before it.
+  const newTopping = !CAMPAIGN.slice(0, index).some((c) => c.level.topping === level.topping);
+  const before = index > 0 && newTopping ? CAMPAIGN[index - 1].level.topping : null;
   const options = runnerOptionsFor(level.topping);
 
   describe(`level ${id}`, () => {
@@ -42,7 +44,7 @@ export function checkLevel(id: string): void {
       expect(s.finished).toBe(true);
     });
 
-    if (before !== null && before !== level.topping) {
+    if (before !== null) {
       it(`cannot be cleared with the topping before it, ${TOPPINGS[before].name}`, { timeout: 240_000 }, () => {
         // Without a boss's chase, which only adds ways to lose, so that the
         // search stays small.

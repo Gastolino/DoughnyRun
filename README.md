@@ -83,9 +83,31 @@ into a sausage: the doughnut smashes through it and drops to first gear.
 A smashed sausage counts as dealt with. Falling into a void, hitting a cliff
 or skipping a sausage still ends the run.
 
+## World 2: The Big Apple
+
+World 2 opens once the World 1 boss is beaten. It is New York downtown at
+dusk: two rows of buildings slide past, the pavement turns to asphalt and a
+crosswalk where the street crosses, and across each street a police car sits
+with its lights flashing. Yellow cabs with a checker stripe park in the
+street and hot dog carts on the pavement. Both are solid: land on a cab's
+trunk, roof or hood, or a cart's counter, and roll along; run into a side and
+the run ends. The sausages are hot dogs with a zigzag of mustard, and a
+doughnut rolling along a cart's counter threads the ones laid on it.
+
+| Level | Name          | Topping           |
+|-------|---------------|-------------------|
+| 2-1   | Taxi Rank     | Chocolate glaze   |
+| 2-2   | Hot Dog Alley | Chocolate glaze   |
+| 2-3   | Rush Hour     | Rainbow sprinkles |
+
+In the level format, `cab` and `cart` elements take an `x`, `street`
+elements an `x` and a `width`, and `"theme": "city"` gives a level the city's
+look. The editor has Cab (C), Hot dog cart (H) and Street (T) tools and a
+Look setting.
+
 ## World map
 
-The menu opens World 1, Sugar Land: a sprinkle path winding over the
+Each world has a map; the menu lists the worlds. World 1, Sugar Land, is a sprinkle path winding over the
 doughnut hills with a glazed stop for each level, in the colour of its
 topping. Finished levels show their medal, levels not yet open wear a
 padlock, and the denture boss waits at the end. Doughny stands on the next

@@ -345,10 +345,10 @@ export function drawPolice(scene: Phaser.Scene, streets: readonly Street[]): Pha
     // Placed so it passes the middle of the screen as the doughnut crosses.
     const mid = st.x + st.width / 2;
     const x = VIEW.width * 0.55 + (mid - VIEW.playerScreenX) * f;
-    const y = VIEW.groundY - 26;
-    const car = scene.add.image(x, y, key).setScale(0.6).setScrollFactor(f, f).setDepth(-0.5);
-    const red = scene.add.image(x - 6, y - 23, "glow").setTint(0xff3040).setScale(0.8).setScrollFactor(f, f).setDepth(-0.4);
-    const blue = scene.add.image(x + 12, y - 23, "glow").setTint(0x3a7bff).setScale(0.8).setScrollFactor(f, f).setDepth(-0.4);
+    const y = VIEW.groundY - 34;
+    const car = scene.add.image(x, y, key).setScale(0.48).setScrollFactor(f, f).setDepth(-0.5);
+    const red = scene.add.image(x - 5, y - 18, "glow").setTint(0xff3040).setScale(0.8).setScrollFactor(f, f).setDepth(-0.4);
+    const blue = scene.add.image(x + 10, y - 18, "glow").setTint(0x3a7bff).setScale(0.8).setScrollFactor(f, f).setDepth(-0.4);
     red.setBlendMode(Phaser.BlendModes.ADD);
     blue.setBlendMode(Phaser.BlendModes.ADD);
     lights.push(red, blue);

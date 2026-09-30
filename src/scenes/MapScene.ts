@@ -1,5 +1,6 @@
 import Phaser from "phaser";
-import { CAMPAIGN } from "../levels/index";
+import { CAMPAIGN, WORLDS, worldLevels } from "../levels/index";
+import type { CampaignLevel } from "../levels/index";
 import { medalFor, medalTargets } from "../logic/medals";
 import { VIEW } from "../logic/tuning";
 import { bestScore, isUnlocked } from "../progress";
@@ -12,21 +13,37 @@ import type { PlayRequest } from "./LevelScene";
 import { COLORS, SPRINKLE_COLORS } from "./palette";
 import { showRainbow } from "./rainbowText";
 
-// The World 1 map: a sprinkle path winding over the doughnut hills, with a
-// stop for each level. Finished levels show their medal, levels not yet
+// A world's map: a path winding over its scenery, with a stop for each
+// level: sprinkles over the doughnut hills in Sugar Land, taxi yellow along
+// the avenue in the city. Finished levels show their medal, levels not yet
 // open wear a padlock, and the boss waits at the end. Doughny stands at the
 // chosen stop; tap a stop, or use the arrow keys and Enter, to play.
 
-const STOPS: readonly { x: number; y: number }[] = [
-  { x: 130, y: 420 },
-  { x: 310, y: 330 },
-  { x: 490, y: 405 },
-  { x: 670, y: 300 },
-  { x: 850, y: 205 },
-  // The bonus stops, back along the top of the map past the boss.
-  { x: 650, y: 175 },
-  { x: 450, y: 195 },
-];
+const STOPS: Record<number, readonly { x: number; y: number }[]> = {
+  1: [
+    { x: 130, y: 420 },
+    { x: 310, y: 330 },
+    { x: 490, y: 405 },
+    { x: 670, y: 300 },
+    { x: 850, y: 205 },
+    // The bonus stops, back along the top of the map past the boss.
+    { x: 650, y: 175 },
+    { x: 450, y: 195 },
+  ],
+  // Along the avenue, block by block.
+  2: [
+    { x: 170, y: 420 },
+    { x: 480, y: 350 },
+    { x: 790, y: 280 },
+  ],
+};
+
+// Sprinkles for the sugar land's path; taxi yellow and crosswalk white for the city's.
+const PATH_COLORS: Record<number, readonly number[]> = { 1: SPRINKLE_COLORS, 2: [0xffcc1a, 0xffffff] };
+
+export interface MapRequest {
+  world?: number;
+}
 
 const MARKER = 0.62;
 
@@ -39,6 +56,10 @@ const TOPPING_GLAZE: Record<string, { fill: number; rim: number; ink: string }> 
 };
 
 export class MapScene extends Phaser.Scene {
+  private world = 1;
+  private levels: CampaignLevel[] = [];
+  private stops: readonly { x: number; y: number }[] = [];
+  /** Position of the chosen level in this world's list. */
   private chosen = 0;
   private marker: Phaser.GameObjects.Image[] = [];
   private info!: Phaser.GameObjects.Text;
@@ -48,23 +69,39 @@ export class MapScene extends Phaser.Scene {
     super("map");
   }
 
+  init(request: MapRequest): void {
+    this.world = request.world ?? 1;
+    this.levels = worldLevels(this.world);
+    this.stops = STOPS[this.world] ?? STOPS[1];
+  }
+
   create(): void {
     this.cameras.main.setScroll(0, 0);
-    addSkySprinkles(this);
-    drawBackdrop(this, VIEW.width);
-    showRainbow(this, VIEW.width / 2, 52, "World 1", 34, 50, true, "bubbly");
+    const theme = this.levels[0]?.level.theme ?? "candy";
+    if (theme === "candy") addSkySprinkles(this);
+    drawBackdrop(this, VIEW.width, theme);
+    if (theme === "city") {
+      // The avenue along the foot of the map, with its crosswalk dashes.
+      // Pavement where the buildings stand, then the road.
+      const kerb = VIEW.groundY + 8;
+      this.add.rectangle(0, kerb, VIEW.width, 10, 0xc9cbd3).setOrigin(0, 0).setDepth(2);
+      this.add.rectangle(0, kerb + 10, VIEW.width, VIEW.height - kerb - 10, 0x3a3c46).setOrigin(0, 0).setDepth(2);
+      for (let x = 20; x < VIEW.width; x += 90) this.add.rectangle(x, VIEW.height - 8, 44, 5, 0xf4f4f4).setOrigin(0, 0).setDepth(2);
+    }
+    const info = WORLDS.find((w) => w.id === this.world);
+    showRainbow(this, VIEW.width / 2, 52, `World ${this.world}`, 34, 50, true, "bubbly");
     this.add
-      .text(VIEW.width / 2, 92, "Sugar Land", { fontFamily: READABLE_FONT, fontSize: "20px", color: COLORS.text, stroke: "#ffffff", strokeThickness: 5 })
+      .text(VIEW.width / 2, 92, info?.name ?? "", { fontFamily: READABLE_FONT, fontSize: "20px", color: COLORS.text, stroke: "#ffffff", strokeThickness: 5 })
       .setOrigin(0.5);
 
     this.drawPath();
-    STOPS.slice(0, CAMPAIGN.length).forEach((p, i) => this.drawStop(p, i));
+    this.stops.slice(0, this.levels.length).forEach((p, i) => this.drawStop(p, i));
 
     // Doughny waits at the first level still to finish, or the last open one.
-    const open = CAMPAIGN.map((_, i) => isUnlocked(i));
-    const firstUnfinished = CAMPAIGN.findIndex((c, i) => open[i] && bestScore(c.id) === 0);
-    this.chosen = firstUnfinished >= 0 ? firstUnfinished : open.lastIndexOf(true);
-    const topping = CAMPAIGN[this.chosen].level.topping;
+    const open = this.levels.map((_, i) => this.open(i));
+    const firstUnfinished = this.levels.findIndex((c, i) => open[i] && bestScore(c.id) === 0);
+    this.chosen = Math.max(0, firstUnfinished >= 0 ? firstUnfinished : open.lastIndexOf(true));
+    const topping = this.levels[this.chosen].level.topping;
     this.marker = [
       this.add.image(0, 0, `doughnut-back-${topping}`).setScale(MARKER),
       this.add.image(0, 0, `doughnut-front-${topping}`).setScale(MARKER),
@@ -97,7 +134,7 @@ export class MapScene extends Phaser.Scene {
 
   update(_time: number, deltaMs: number): void {
     this.bob += deltaMs / 1000;
-    const p = STOPS[this.chosen];
+    const p = this.stops[this.chosen];
     const x = this.marker[0].getData("x") ?? p.x;
     // Standing on the platform, with a little hop.
     const y = (this.marker[0].getData("y") ?? p.y) - 30 - Math.abs(Math.sin(this.bob * 3)) * 8;
@@ -108,7 +145,9 @@ export class MapScene extends Phaser.Scene {
 
   /** Candy sprinkles laid along a smooth curve through the stops. */
   private drawPath(): void {
-    const points = STOPS.slice(0, CAMPAIGN.length).map((p) => new Phaser.Math.Vector2(p.x, p.y));
+    const n = this.levels.length;
+    const points = this.stops.slice(0, n).map((p) => new Phaser.Math.Vector2(p.x, p.y));
+    const colors = PATH_COLORS[this.world] ?? SPRINKLE_COLORS;
     const curve = new Phaser.Curves.Spline(points);
     const length = curve.getLength();
     const count = Math.floor(length / 20);
@@ -117,12 +156,12 @@ export class MapScene extends Phaser.Scene {
       const p = curve.getPointAt(t);
       const tangent = curve.getTangentAt(t);
       // Dimmer past the last open stop.
-      const segment = Math.min(CAMPAIGN.length - 1, Math.floor(t * (CAMPAIGN.length - 1) + 0.0001) + 1);
-      const lit = isUnlocked(segment);
+      const segment = Math.min(n - 1, Math.floor(t * (n - 1) + 0.0001) + 1);
+      const lit = this.open(segment);
       this.add
         .image(p.x, p.y, "pill")
         .setRotation(Math.atan2(tangent.y, tangent.x) + (i % 2 ? 0.5 : -0.5))
-        .setTint(SPRINKLE_COLORS[i % SPRINKLE_COLORS.length])
+        .setTint(colors[i % colors.length])
         .setAlpha(lit ? 1 : 0.35)
         .setScale(0.8)
         .setDepth(6);
@@ -130,8 +169,8 @@ export class MapScene extends Phaser.Scene {
   }
 
   private drawStop(p: { x: number; y: number }, i: number): void {
-    const c = CAMPAIGN[i];
-    const open = isUnlocked(i);
+    const c = this.levels[i];
+    const open = this.open(i);
     const boss = Boolean(c.level.chaser);
     const alpha = open ? 1 : 0.45;
     // A round platform glazed in the level's topping, with its number below.
@@ -169,14 +208,14 @@ export class MapScene extends Phaser.Scene {
 
   private step(by: number): void {
     const next = this.chosen + by;
-    if (next < 0 || next >= CAMPAIGN.length) return;
+    if (next < 0 || next >= this.levels.length) return;
     this.choose(next, true);
   }
 
   private choose(i: number, animate: boolean): void {
     this.chosen = i;
-    const p = STOPS[i];
-    const c = CAMPAIGN[i];
+    const p = this.stops[i];
+    const c = this.levels[i];
     if (animate) {
       sound.click();
       const from = { x: this.marker[0].getData("x") ?? p.x, y: this.marker[0].getData("y") ?? p.y };
@@ -199,16 +238,22 @@ export class MapScene extends Phaser.Scene {
     const verb = window.matchMedia("(pointer: coarse)").matches ? "Tap again" : "Press Enter";
     const kind = c.level.chaser ? "  (boss)" : c.id.startsWith("B-") ? "  (bonus)" : "";
     const lines = [`${c.id}  ${c.level.name}${kind}`];
-    if (!isUnlocked(i)) lines.push(`Finish ${CAMPAIGN[i - 1].id} to open`);
+    if (!this.open(i)) lines.push(`Finish ${c.requires} to open`);
     else {
       lines.push(`${best ? `Best ${best}` : "Not finished yet"}  ·  Silver ${t.silver}  ·  Gold ${t.gold}  ·  ${verb} to play`);
     }
     this.info.setText(lines.join("\n"));
   }
 
+  /** Whether the level at this position in the world is open. */
+  private open(i: number): boolean {
+    return isUnlocked(CAMPAIGN.indexOf(this.levels[i]));
+  }
+
   private play(i: number): void {
-    if (!isUnlocked(i)) return;
-    const request: PlayRequest = { level: CAMPAIGN[i].level, campaignIndex: i, returnTo: "map" };
+    if (!this.open(i)) return;
+    const index = CAMPAIGN.indexOf(this.levels[i]);
+    const request: PlayRequest = { level: CAMPAIGN[index].level, campaignIndex: index, returnTo: "map" };
     this.scene.start("level", request);
   }
 }

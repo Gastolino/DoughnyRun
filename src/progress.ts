@@ -78,13 +78,19 @@ function save(data: Saved): void {
 }
 
 /**
- * A campaign level is open once the one before it has been finished, and
+ * A campaign level is open once the level it requires has been finished, and
  * stays open once finished itself, even when a new level is added before it.
  */
 export function isUnlocked(index: number): boolean {
-  if (index <= 0) return true;
+  const c = CAMPAIGN[index];
+  if (!c || c.requires === null) return true;
   const done = load().completed;
-  return done.includes(CAMPAIGN[index - 1].id) || done.includes(CAMPAIGN[index].id);
+  return done.includes(c.requires) || done.includes(c.id);
+}
+
+/** Whether a level of this id has been finished. */
+export function isFinished(id: string): boolean {
+  return load().completed.includes(id);
 }
 
 export function bestScore(id: string): number {
