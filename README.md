@@ -77,6 +77,14 @@ into a sausage: the doughnut smashes through it and drops to first gear.
 A smashed sausage counts as dealt with. Falling into a void, hitting a cliff
 or skipping a sausage still ends the run.
 
+## Medals
+
+Every finish earns a medal, set against the level's perfect score: every
+sausage graded perfect in one unbroken chain (`src/logic/medals.ts`). Gold
+asks for 80% of it and silver for 55%; any finish earns bronze. Air combos
+come on top, so a daring run can beat the perfect score. The finish screen
+shows the medal and how many more points the next one needs.
+
 ## The boss
 
 Chomp Chase ends World 1. Wind-up chattering dentures in a police hat run

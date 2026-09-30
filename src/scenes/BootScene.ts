@@ -43,6 +43,7 @@ export class BootScene extends Phaser.Scene {
     this.makeBite();
     this.makeCopArm();
     this.makeDentures();
+    this.makeMedals();
     this.makeShades();
     // Rainbow lettering is drawn onto canvases, which need the font ready.
     void loadFunFont().then(() => this.scene.start(window.location.hash === "#editor" ? "editor" : "menu"));
@@ -421,6 +422,55 @@ export class BootScene extends Phaser.Scene {
       }
       g.fillRect(34, 22, 10, 16);
       key.refresh();
+    }
+  }
+
+  /** Gold, silver and bronze medals on a striped ribbon, 72 by 100. */
+  private makeMedals(): void {
+    const metals = {
+      gold: ["#ffd84a", "#c9951a", "#fff3b0"],
+      silver: ["#e3e8ef", "#8e99a8", "#ffffff"],
+      bronze: ["#e39a5b", "#9a5a26", "#ffd2ad"],
+    } as const;
+    for (const [name, [face, rim, shine]] of Object.entries(metals)) {
+      const tex = this.textures.createCanvas(`medal-${name}`, 72, 100);
+      if (!tex) continue;
+      const g = tex.getContext();
+      // Ribbon: two tails in candy stripes.
+      for (const [x0, x1] of [
+        [14, 34],
+        [38, 58],
+      ]) {
+        g.fillStyle = "#ff7eb6";
+        g.beginPath();
+        g.moveTo(x0, 0);
+        g.lineTo(x1, 0);
+        g.lineTo(x1 - 2, 46);
+        g.lineTo(x0 + 2, 46);
+        g.closePath();
+        g.fill();
+        g.fillStyle = "#7ec8ff";
+        g.fillRect(x0 + 8, 0, 5, 46);
+      }
+      g.beginPath();
+      g.arc(36, 64, 30, 0, Math.PI * 2);
+      g.fillStyle = rim;
+      g.fill();
+      g.beginPath();
+      g.arc(36, 64, 24, 0, Math.PI * 2);
+      g.fillStyle = face;
+      g.fill();
+      // A doughnut stamped in the middle, and a glint.
+      g.beginPath();
+      g.arc(36, 64, 13, 0, Math.PI * 2);
+      g.arc(36, 64, 5, 0, Math.PI * 2, true);
+      g.fillStyle = rim;
+      g.fill("evenodd");
+      g.beginPath();
+      g.ellipse(26, 52, 7, 3.5, -0.6, 0, Math.PI * 2);
+      g.fillStyle = shine;
+      g.fill();
+      tex.refresh();
     }
   }
 

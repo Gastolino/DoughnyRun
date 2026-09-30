@@ -12,10 +12,12 @@ import { coarsePointer, gameElement, isBlocked, keepAwake, onBlockedChange } fro
 import { recordFinish } from "../progress";
 import { solveAsync } from "../solveAsync";
 import { isMuted, setMuted, sound } from "../sound";
+import { medalFor, medalTargets } from "../logic/medals";
+import type { Medal } from "../logic/medals";
 import { h, overlay } from "../ui";
 import { ART_HALF_WIDTH, EYES_OFFSET, SHADES_FRAMES } from "./BootScene";
 import { READABLE_FONT, TITLE_FONT } from "./fonts";
-import { showRainbow } from "./rainbowText";
+import { RAINBOW_SCALE, showRainbow } from "./rainbowText";
 import { DentureChaser } from "./boss";
 import { addSkySprinkles, DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
 import { COLORS, SPRINKLE_COLORS } from "./palette";
@@ -69,6 +71,8 @@ const GAP_PAUSE_MS = 500;
 
 type Mode = "ready" | "running" | "paused" | "ended";
 
+const MEDAL_TEXT: Record<Medal, string> = { gold: "Gold medal!", silver: "Silver medal", bronze: "Bronze medal" };
+
 const DEATH_TEXT: Record<DeathCause, string> = {
   sausage: "Bonk! The sausage hit the dough.",
   fell: "Down the hole you go.",
@@ -114,6 +118,7 @@ export class LevelScene extends Phaser.Scene {
   private debug!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
   private banner: Phaser.GameObjects.Image | null = null;
+  private medal: Phaser.GameObjects.Image | null = null;
   private hint!: Phaser.GameObjects.Text;
   // Meme sunglasses that drop onto the doughnut's face in top gear.
   private shades!: Phaser.GameObjects.Image;
@@ -659,8 +664,9 @@ export class LevelScene extends Phaser.Scene {
         this.end();
         // Worked out now, so the result is saved even if the lap is skipped.
         const text = this.finishText();
-        // "Level clear!", the score and the threaded count are titles; the rest are sentences.
-        this.victoryLap(() => this.showBanner(text, 3));
+        // "Level clear!", the score and the medal are titles; the rest are sentences.
+        const medal = medalFor(this.level, this.runner.score);
+        this.victoryLap(() => this.showBanner(text, 3, medal));
         break;
       }
     }
@@ -668,8 +674,13 @@ export class LevelScene extends Phaser.Scene {
 
   private finishText(): string {
     const score = this.runner.score;
-    const total = this.level.sausages.length;
-    const lines = ["Level clear!", `Score ${score}`, `Threaded ${this.runner.threaded.length}/${total}`];
+    const medal = medalFor(this.level, score) as Medal;
+    const lines = ["Level clear!", `Score ${score}`, MEDAL_TEXT[medal]];
+    // What the next medal up asks for, as a sentence after the titles.
+    const t = medalTargets(this.level);
+    const goal: [string, number] | null =
+      medal === "bronze" ? ["silver", t.silver] : medal === "silver" ? ["gold", t.gold] : null;
+    if (goal) lines.push(`${goal[1] - score} more for ${goal[0]}`);
     const index = this.request.campaignIndex;
     if (this.request.demo || this.demoInputs) return lines.join("\n");
     if (index !== undefined) {
@@ -1244,15 +1255,24 @@ export class LevelScene extends Phaser.Scene {
   }
 
   /** Shows a banner whose first `titleLines` lines are titles in the bubble face. */
-  private showBanner(text: string, titleLines: number): void {
+  private showBanner(text: string, titleLines: number, medal: Medal | null = null): void {
     this.hideBanner();
     const size = coarsePointer() ? 30 : 26;
-    this.banner = showRainbow(this, VIEW.width / 2, VIEW.height / 2 - 50, text, size, DEPTH.hud, true, "plain", titleLines);
+    this.banner = showRainbow(this, VIEW.width / 2, VIEW.height / 2 - 30, text, size, DEPTH.hud, true, "plain", titleLines);
+    if (medal) {
+      // The medal drops in above the banner with a bounce.
+      // Measured at the banner's full size; it is still growing into place.
+      const y = Math.max(60, this.banner.y - this.banner.height / RAINBOW_SCALE / 2 - 44);
+      this.medal = this.add.image(VIEW.width / 2, y, `medal-${medal}`).setScrollFactor(0).setDepth(DEPTH.hud).setScale(0);
+      this.tweens.add({ targets: this.medal, scale: 1, duration: 520, ease: "Back.easeOut" });
+    }
   }
 
   private hideBanner(): void {
     this.banner?.destroy();
     this.banner = null;
+    this.medal?.destroy();
+    this.medal = null;
   }
 
   private drawHitboxes(x: number, y: number): void {
