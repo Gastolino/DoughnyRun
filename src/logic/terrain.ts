@@ -1,10 +1,12 @@
 import { TUNING, VIEW } from "./tuning";
-import type { Boost, LevelData, Ramp } from "./types";
+import type { Boost, Hills, LevelData, Ramp } from "./types";
 
 // The height of the ground under the doughnut. Flat ground sits at
 // VIEW.groundY; a ramp rises above it on a curve that steepens towards the
 // lip, like a skate kicker. A ramp is solid all the way down, so one placed at
-// the edge of a void can launch the doughnut across it.
+// the edge of a void can launch the doughnut across it. Hills roll up and
+// down on top of the ground, and where a gap cuts through them it leaves a
+// cliff as tall as the hill at that point.
 
 /** Height of a ramp's surface above the ground at x, or 0 off the ramp. */
 export function rampRise(r: Ramp, x: number): number {
@@ -17,6 +19,27 @@ export function rampRise(r: Ramp, x: number): number {
 export function rampSlope(r: Ramp, x: number): number {
   if (x < r.x || x > r.x + r.width) return 0;
   return (2 * r.height * (x - r.x)) / (r.width * r.width);
+}
+
+/** Height of the hills' surface above the ground at x, or 0 off them. */
+export function hillsRise(h: Hills, x: number): number {
+  if (x < h.x || x > h.x + h.width) return 0;
+  return (h.height * (1 - Math.cos((2 * Math.PI * h.waves * (x - h.x)) / h.width))) / 2;
+}
+
+/** Upward slope of the hills at x, or 0 off them. */
+export function hillsSlope(h: Hills, x: number): number {
+  if (x < h.x || x > h.x + h.width) return 0;
+  const k = (2 * Math.PI * h.waves) / h.width;
+  return ((h.height * k) / 2) * Math.sin(k * (x - h.x));
+}
+
+export function hillsAt(level: LevelData, x: number): Hills | null {
+  for (const h of level.hills) {
+    if (h.x > x) break;
+    if (x <= h.x + h.width) return h;
+  }
+  return null;
 }
 
 export function rampAt(level: LevelData, x: number): Ramp | null {
@@ -32,7 +55,10 @@ export function surfaceAt(level: LevelData, x: number): number | null {
   const r = rampAt(level, x);
   if (r) return VIEW.groundY - rampRise(r, x);
   for (const g of level.ground) {
-    if (x >= g.x && x <= g.x + g.width) return VIEW.groundY;
+    if (x >= g.x && x <= g.x + g.width) {
+      const h = hillsAt(level, x);
+      return VIEW.groundY - (h ? hillsRise(h, x) : 0);
+    }
   }
   return null;
 }
@@ -40,7 +66,9 @@ export function surfaceAt(level: LevelData, x: number): number | null {
 /** Upward slope of the surface at x. */
 export function slopeAt(level: LevelData, x: number): number {
   const r = rampAt(level, x);
-  return r ? rampSlope(r, x) : 0;
+  if (r) return rampSlope(r, x);
+  const h = hillsAt(level, x);
+  return h ? hillsSlope(h, x) : 0;
 }
 
 /** Where a boost from this pad runs out. */

@@ -17,19 +17,29 @@ export interface Saved {
   custom: LevelFile[];
 }
 
-let memory: Saved = { campaign: 2, completed: [], best: {}, custom: [] };
+let memory: Saved = { campaign: 3, completed: [], best: {}, custom: [] };
 
 /**
- * The first campaign had two levels; the second put a new level between
- * them, so the glaze level moved from 1-2 to 1-3. Progress saved under the
- * old numbering follows the level to its new id.
+ * Levels added between existing ones renumber the ones after them. The first
+ * campaign had two levels; the second put Sugar Rush between them, and the
+ * third put Jelly Hills after it, so Glaze Heights went from 1-2 to 1-3 and
+ * then to 1-4. Progress saved under an old numbering follows each level to
+ * its new id.
  */
+export const CAMPAIGN_VERSION = 3;
+const RENAMES: Record<number, Record<string, string>> = {
+  1: { "1-2": "1-4" },
+  2: { "1-3": "1-4" },
+};
+
 export function migrate(data: Saved): Saved {
-  if ((data.campaign ?? 1) >= 2) return data;
-  const rename = (id: string): string => (id === "1-2" ? "1-3" : id);
+  const version = data.campaign ?? 1;
+  if (version >= CAMPAIGN_VERSION) return data;
+  const map = RENAMES[version] ?? {};
+  const rename = (id: string): string => map[id] ?? id;
   const best: Record<string, number> = {};
   for (const [id, score] of Object.entries(data.best)) best[rename(id)] = score;
-  return { ...data, campaign: 2, completed: data.completed.map(rename), best };
+  return { ...data, campaign: CAMPAIGN_VERSION, completed: data.completed.map(rename), best };
 }
 
 function load(): Saved {

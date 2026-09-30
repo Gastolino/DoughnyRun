@@ -25,6 +25,18 @@ export interface Ramp {
   height: number;
 }
 
+/**
+ * Rolling hills: the ground's surface rises and falls in even waves, from
+ * ground level at x up to `height` at each crest and back, `waves` times over
+ * `width`. Hills lie on the ground, so a gap cuts through them as a cliff.
+ */
+export interface Hills {
+  x: number;
+  width: number;
+  height: number;
+  waves: number;
+}
+
 /** A speed pad on the ground. Rolling over it sends the doughnut into boost. */
 export interface Boost {
   x: number;
@@ -44,4 +56,6 @@ export interface LevelData {
   ramps: Ramp[];
   /** Sorted by x. */
   boosts: Boost[];
+  /** Sorted by x, and never overlapping each other or a ramp. */
+  hills: Hills[];
 }

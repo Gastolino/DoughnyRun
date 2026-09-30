@@ -22,7 +22,7 @@ export class MenuScene extends Phaser.Scene {
     this.cameras.main.setScroll(0, 0);
     addSkySprinkles(this);
     drawBackdrop(this, VIEW.width);
-    drawGround(this, { name: "", length: VIEW.width, topping: "plain", ground: [{ x: 0, width: VIEW.width * 2 }], sausages: [], ramps: [], boosts: [] });
+    drawGround(this, { name: "", length: VIEW.width, topping: "plain", ground: [{ x: 0, width: VIEW.width * 2 }], sausages: [], ramps: [], boosts: [], hills: [] });
     this.add.image(VIEW.playerScreenX, VIEW.groundY - 48, "doughnut-back-plain");
     this.add.image(VIEW.playerScreenX, VIEW.groundY - 48, "doughnut-front-plain");
     this.add.image(VIEW.playerScreenX + EYES_OFFSET.x, VIEW.groundY - 48 + EYES_OFFSET.y, "doughnut-eyes");

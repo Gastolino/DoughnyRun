@@ -175,6 +175,7 @@ function featuresOf(level: LevelData): Features {
   for (const s of level.sausages) spans.push([s.x, s.x + s.length]);
   for (const r of level.ramps) spans.push([r.x, r.x + r.width]);
   for (const b of level.boosts) spans.push([b.x, b.x + b.width]);
+  for (const h of level.hills) spans.push([h.x, h.x + h.width]);
   for (let i = 0; i < level.ground.length; i++) {
     const end = level.ground[i].x + level.ground[i].width;
     spans.push([end, level.ground[i + 1]?.x ?? end]);
@@ -205,6 +206,7 @@ function airtimeBound(airJumps: number): number {
     sausages: [],
     ramps: [],
     boosts: [],
+    hills: [],
   };
   const s = createRunner(flat);
   let steps = 0;

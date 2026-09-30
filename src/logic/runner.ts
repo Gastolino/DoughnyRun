@@ -108,6 +108,9 @@ const R = DOUGHNUT.outerRadius;
 // How far below the surface the doughnut may sink within one step and still
 // be caught by the ground rather than counted as having fallen past it.
 const SURFACE_TOLERANCE = 2;
+// How far a surface may fall away within one step and still hold a rolling
+// doughnut: far more than any hill curves, far less than a ramp's lip drops.
+const STICK = 4;
 
 export function createRunner(level: LevelData, options: RunnerOptions = PLAIN): RunnerState {
   const x = level.ground[0]?.x ?? 0;
@@ -210,12 +213,15 @@ export function stepRunner(
       // run into the side of a cliff.
       return die(s, "wall", events);
     }
-    if (bottom >= surface) {
+    // A rolling doughnut hugs a surface that curves away beneath it, as over
+    // the top of a hill; only a drop, such as a ramp's lip, throws it clear.
+    const hugging = s.grounded && surface - bottom <= STICK;
+    if (bottom >= surface || hugging) {
       s.y = surface - R;
-      // On a ramp the surface itself rises; the doughnut rides it at that
-      // speed, and keeps it when it leaves the lip.
+      // On a slope the surface itself rises or falls; the doughnut rides it
+      // at that speed, and keeps it when it leaves a ramp's lip.
       const surfaceVy = -speedOf(s) * slopeAt(level, s.x);
-      if (s.vy >= surfaceVy) {
+      if (s.vy >= surfaceVy || hugging) {
         touching = true;
         s.vy = surfaceVy;
         if (!s.grounded) events.push({ type: "land" });

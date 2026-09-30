@@ -23,6 +23,7 @@ const FLAT: LevelData = {
   sausages: [],
   ramps: [],
   boosts: [],
+  hills: [],
 };
 
 function highest(airJumps: number): number {

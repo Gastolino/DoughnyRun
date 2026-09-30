@@ -16,6 +16,7 @@ const base: LevelData = {
   sausages: [],
   ramps: [],
   boosts: [],
+  hills: [],
 };
 const ramp = { x: 600, width: 300, height: 90 };
 const withRamp: LevelData = { ...base, ramps: [ramp] };
@@ -155,5 +156,52 @@ describe("the bypass search", () => {
       ],
     };
     expect([...findBypasses(level, { airJumps: 0, shield: false }, [0, 1])]).toEqual([1]);
+  });
+});
+
+describe("hills", () => {
+  const hills = { x: 600, width: 1200, height: 80, waves: 3 };
+  const rolling: LevelData = { ...base, hills: [hills] };
+
+  it("carry a rolling doughnut up and down every wave without leaving the surface", () => {
+    for (const gear of [0, TUNING.gears.length - 1]) {
+      const s = createRunner(rolling);
+      s.gear = gear;
+      let lowest = Infinity;
+      const events = runUntil(s, rolling, (st) => {
+        if (st.x > hills.x && st.x < hills.x + hills.width) {
+          expect(st.grounded).toBe(true);
+          expect(st.y + R).toBeCloseTo(surfaceAt(rolling, st.x) ?? 0, 5);
+          lowest = Math.min(lowest, st.y + R);
+        }
+        return st.x > 2000;
+      });
+      expect(events.filter((e) => e.type === "land")).toEqual([]);
+      expect(VIEW.groundY - lowest).toBeGreaterThan(hills.height - 1);
+    }
+  });
+
+  it("give a jump from an upslope the surface's upward speed", () => {
+    const upslope = hills.x + hills.width / hills.waves / 4; // steepest point of the first rise
+    const fromHill = peakAfter(rolling, (st) => ({ held: true, pressed: st.x >= upslope && st.x < upslope + 4 }));
+    const fromFlat = peakAfter(base, (st) => ({ held: true, pressed: st.x >= upslope && st.x < upslope + 4 }));
+    expect(fromHill).toBeGreaterThan(fromFlat + 40);
+  });
+
+  it("leave a cliff where a gap cuts through them", () => {
+    const cut: LevelData = { ...rolling, ground: [{ x: 0, width: 600 }, { x: 700, width: 100000 }] };
+    expect(surfaceAt(cut, 650)).toBeNull();
+    expect(VIEW.groundY - (surfaceAt(cut, 700) ?? VIEW.groundY)).toBeGreaterThan(10);
+    const s = createRunner(cut);
+    runUntil(s, cut, () => false);
+    expect(s.dead).toBe("wall");
+  });
+
+  it("may not overlap a ramp, and need a whole number of waves", () => {
+    const file = (elements: unknown[]) => ({ format: 1, name: "t", length: 4000, topping: "plain", elements });
+    expect(() =>
+      parseLevelFile(file([{ type: "hills", x: 500, width: 800, height: 50, waves: 2 }, { type: "ramp", x: 1200, width: 200, height: 50 }])),
+    ).toThrow(/overlap/);
+    expect(() => parseLevelFile(file([{ type: "hills", x: 500, width: 800, height: 50, waves: 2.5 }]))).toThrow(/whole/);
   });
 });

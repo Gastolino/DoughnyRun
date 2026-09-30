@@ -25,7 +25,7 @@ export interface EditorRequest {
   file?: LevelFile;
 }
 
-type Tool = "select" | "sausage" | "gap" | "ramp" | "boost";
+type Tool = "select" | "sausage" | "gap" | "ramp" | "boost" | "hills";
 
 type Drag =
   | { kind: "pan"; startX: number; startY: number; scrollX: number; scrollY: number }
@@ -43,6 +43,7 @@ const ZOOMS = [1, 0.75, 0.5, 0.35];
 const DEFAULT_SAUSAGE = 40;
 const DEFAULT_RAMP = { width: 300, height: 80 };
 const DEFAULT_BOOST = 160;
+const DEFAULT_HILLS = { width: 1200, height: 70, waves: 3 };
 const START_X = 80;
 
 const TOOL_HELP: Record<Tool, string> = {
@@ -51,6 +52,7 @@ const TOOL_HELP: Record<Tool, string> = {
   gap: "Drag along the ground to cut a gap.",
   ramp: "Drag along the ground to place a ramp; select it and drag its lip up or down to set its height.",
   boost: "Drag along the ground to lay a speed pad.",
+  hills: "Drag along the ground to raise rolling hills; select them and drag the handle on the first crest to set their height.",
 };
 
 /** Length along the ground, whatever the element calls it. */
@@ -68,6 +70,8 @@ function minSize(e: LevelElement): number {
       return LIMITS.minRampWidth;
     case "boost":
       return LIMITS.minBoostWidth;
+    case "hills":
+      return LIMITS.minHillsWidth;
   }
 }
 
@@ -85,7 +89,15 @@ function setSize(e: LevelElement, v: number): void {
     case "boost":
       e.width = clamp(v, LIMITS.minBoostWidth, LIMITS.maxBoostWidth);
       break;
+    case "hills":
+      e.width = clamp(v, LIMITS.minHillsWidth, LIMITS.maxHillsWidth);
+      break;
   }
+}
+
+/** Where the first crest of a stretch of hills stands, for its height handle. */
+function firstCrest(e: { x: number; width: number; waves: number }): number {
+  return e.x + e.width / e.waves / 2;
 }
 
 function newLevel(): LevelFile {
@@ -338,6 +350,12 @@ export class EditorScene extends Phaser.Scene {
         g.fillRect(e.x - hs / 2, VIEW.groundY - hs / 2, hs, hs);
         g.fillRect(e.x + e.width - hs / 2, VIEW.groundY - hs / 2, hs, hs);
         g.fillRect(e.x + e.width - hs / 2, VIEW.groundY - e.height - hs / 2, hs, hs);
+      } else if (e.type === "hills") {
+        g.strokeRect(e.x, VIEW.groundY - e.height, e.width, e.height);
+        g.fillStyle(0x1e6fff, 1);
+        g.fillRect(e.x - hs / 2, VIEW.groundY - hs / 2, hs, hs);
+        g.fillRect(e.x + e.width - hs / 2, VIEW.groundY - hs / 2, hs, hs);
+        g.fillRect(firstCrest(e) - hs / 2, VIEW.groundY - e.height - hs / 2, hs, hs);
       } else if (e.type === "boost") {
         g.strokeRect(e.x - 4, VIEW.groundY - 14, e.width + 8, 24);
         g.fillStyle(0x1e6fff, 1);
@@ -370,6 +388,16 @@ export class EditorScene extends Phaser.Scene {
     for (let i = this.file.elements.length - 1; i >= 0; i--) {
       const e = this.file.elements[i];
       if (e.type !== "boost" || Math.abs(wy - VIEW.groundY) > 12 + pad) continue;
+      if (Math.abs(wx - e.x) <= pad) return { index: i, part: "left" };
+      if (Math.abs(wx - (e.x + e.width)) <= pad) return { index: i, part: "right" };
+      if (wx > e.x && wx < e.x + e.width) return { index: i, part: "body" };
+    }
+    for (let i = this.file.elements.length - 1; i >= 0; i--) {
+      const e = this.file.elements[i];
+      if (e.type !== "hills") continue;
+      const crestY = VIEW.groundY - e.height;
+      if (Math.abs(wx - firstCrest(e)) <= pad * 1.5 && Math.abs(wy - crestY) <= pad * 1.5) return { index: i, part: "top" };
+      if (wy < crestY - pad || wy > VIEW.groundY + pad) continue;
       if (Math.abs(wx - e.x) <= pad) return { index: i, part: "left" };
       if (Math.abs(wx - (e.x + e.width)) <= pad) return { index: i, part: "right" };
       if (wx > e.x && wx < e.x + e.width) return { index: i, part: "body" };
@@ -417,14 +445,16 @@ export class EditorScene extends Phaser.Scene {
         this.drag = { kind: "new-sausage", index: this.selected ?? 0, anchor: x };
         return;
       }
-      if (this.tool === "gap" || this.tool === "ramp" || this.tool === "boost") {
+      if (this.tool === "gap" || this.tool === "ramp" || this.tool === "boost" || this.tool === "hills") {
         const x = clamp(snap(w.x, fine), 0, this.file.length);
         const element: LevelElement =
           this.tool === "gap"
             ? { type: "gap", x, width: LIMITS.minGapWidth }
             : this.tool === "ramp"
               ? { type: "ramp", x, width: DEFAULT_RAMP.width, height: DEFAULT_RAMP.height }
-              : { type: "boost", x, width: DEFAULT_BOOST };
+              : this.tool === "hills"
+                ? { type: "hills", x, ...DEFAULT_HILLS }
+                : { type: "boost", x, width: DEFAULT_BOOST };
         this.commit(() => {
           this.file.elements.push(element);
           this.selected = this.file.elements.length - 1;
@@ -499,6 +529,8 @@ export class EditorScene extends Phaser.Scene {
           case "resize-height":
             if (e.type === "ramp") {
               e.height = clamp(snap(VIEW.groundY - w.y, fine), LIMITS.minRampHeight, LIMITS.maxRampHeight);
+            } else if (e.type === "hills") {
+              e.height = clamp(snap(VIEW.groundY - w.y, fine), LIMITS.minHillsHeight, LIMITS.maxHillsHeight);
             }
             break;
           case "new-sausage":
@@ -569,6 +601,7 @@ export class EditorScene extends Phaser.Scene {
       else if (e.key === "g" || e.key === "G") this.setTool("gap");
       else if (e.key === "r" || e.key === "R") this.setTool("ramp");
       else if (e.key === "b" || e.key === "B") this.setTool("boost");
+      else if (e.key === "w" || e.key === "W") this.setTool("hills");
       else if (e.key === "Delete" || e.key === "Backspace") this.deleteSelected();
       else if (e.key === "Escape") {
         this.selected = null;
@@ -736,6 +769,7 @@ export class EditorScene extends Phaser.Scene {
       gap: button("Gap", () => this.setTool("gap"), "Cut gaps (G)"),
       ramp: button("Ramp", () => this.setTool("ramp"), "Place kicker ramps (R)"),
       boost: button("Speed pad", () => this.setTool("boost"), "Lay speed pads (B)"),
+      hills: button("Hills", () => this.setTool("hills"), "Raise rolling hills (W)"),
     };
     const undo = button("Undo", () => this.undo(), "Undo (Ctrl+Z)");
     const redo = button("Redo", () => this.redo(), "Redo (Ctrl+Shift+Z)");
@@ -769,7 +803,7 @@ export class EditorScene extends Phaser.Scene {
     const top = h(
       "div",
       { id: "editor-top", class: "editor-bar" },
-      h("div", { class: "group", role: "group", "aria-label": "Tools" }, tools.select, tools.sausage, tools.gap, tools.ramp, tools.boost),
+      h("div", { class: "group", role: "group", "aria-label": "Tools" }, tools.select, tools.sausage, tools.gap, tools.ramp, tools.boost, tools.hills),
       h("div", { class: "group" }, undo, redo),
       h(
         "div",
@@ -875,7 +909,7 @@ export class EditorScene extends Phaser.Scene {
       return [h("label", { for: id }, label), input];
     };
     const L = this.file.length;
-    const titles = { sausage: "Sausage", gap: "Gap", ramp: "Ramp", boost: "Speed pad" } as const;
+    const titles = { sausage: "Sausage", gap: "Gap", ramp: "Ramp", boost: "Speed pad", hills: "Hills" } as const;
     ui.selection.append(h("strong", {}, titles[e.type]));
     switch (e.type) {
       case "sausage":
@@ -897,6 +931,14 @@ export class EditorScene extends Phaser.Scene {
         break;
       case "boost":
         ui.selection.append(...field("x", "x", e.x, 0, L), ...field("Width", "width", e.width, LIMITS.minBoostWidth, LIMITS.maxBoostWidth));
+        break;
+      case "hills":
+        ui.selection.append(
+          ...field("x", "x", e.x, 0, L),
+          ...field("Width", "width", e.width, LIMITS.minHillsWidth, LIMITS.maxHillsWidth),
+          ...field("Height", "height", e.height, LIMITS.minHillsHeight, LIMITS.maxHillsHeight),
+          ...field("Waves", "waves", e.waves, 1, LIMITS.maxWaves),
+        );
         break;
     }
     ui.selection.append(

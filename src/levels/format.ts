@@ -1,7 +1,7 @@
 import { isToppingId } from "../logic/toppings";
 import type { ToppingId } from "../logic/toppings";
 import { DOUGHNUT, VIEW } from "../logic/tuning";
-import type { Boost, GroundSegment, LevelData, Ramp, Sausage } from "../logic/types";
+import type { Boost, GroundSegment, Hills, LevelData, Ramp, Sausage } from "../logic/types";
 
 // The level file format, shared by the levels in this folder and by the
 // editor's export. A level is a list of typed elements, so that new kinds of
@@ -17,7 +17,8 @@ import type { Boost, GroundSegment, LevelData, Ramp, Sausage } from "../logic/ty
 //     { "type": "gap", "x": 1300, "width": 140 },
 //     { "type": "sausage", "x": 2000, "y": 231, "length": 40 },
 //     { "type": "ramp", "x": 2600, "width": 300, "height": 90 },
-//     { "type": "boost", "x": 3400, "width": 160 }
+//     { "type": "boost", "x": 3400, "width": 160 },
+//     { "type": "hills", "x": 4000, "width": 1200, "height": 70, "waves": 3 }
 //   ]
 // }
 //
@@ -62,7 +63,16 @@ export interface BoostElement {
   width: number;
 }
 
-export type LevelElement = GapElement | SausageElement | RampElement | BoostElement;
+/** Rolling hills: see Hills in logic/types. */
+export interface HillsElement {
+  type: "hills";
+  x: number;
+  width: number;
+  height: number;
+  waves: number;
+}
+
+export type LevelElement = GapElement | SausageElement | RampElement | BoostElement | HillsElement;
 
 export interface LevelFile {
   format: number;
@@ -84,6 +94,11 @@ export const LIMITS = {
   maxRampHeight: 320,
   minBoostWidth: 40,
   maxBoostWidth: 800,
+  minHillsWidth: 200,
+  maxHillsWidth: 20000,
+  minHillsHeight: 10,
+  maxHillsHeight: 200,
+  maxWaves: 40,
   /** The solver keeps the running pad in five bits of its state key. */
   maxBoosts: 30,
   /** Highest a sausage may hang: far above anything a double jump reaches. */
@@ -150,13 +165,28 @@ export function parseLevelFile(input: unknown): LevelFile {
           x: num(e, "x", where, 0, length),
           width: num(e, "width", where, LIMITS.minBoostWidth, LIMITS.maxBoostWidth),
         };
+      case "hills": {
+        const waves = num(e, "waves", where, 1, LIMITS.maxWaves);
+        if (!Number.isInteger(waves)) return fail(`${where}: "waves" must be a whole number.`);
+        return {
+          type: "hills",
+          x: num(e, "x", where, 0, length),
+          width: num(e, "width", where, LIMITS.minHillsWidth, LIMITS.maxHillsWidth),
+          height: num(e, "height", where, LIMITS.minHillsHeight, LIMITS.maxHillsHeight),
+          waves,
+        };
+      }
       default:
         return fail(`${where} has an unknown "type": ${JSON.stringify(e.type)}.`);
     }
   });
-  const ramps = elements.filter((e): e is RampElement => e.type === "ramp").sort((a, b) => a.x - b.x);
-  for (let i = 1; i < ramps.length; i++) {
-    if (ramps[i].x <= ramps[i - 1].x + ramps[i - 1].width) fail(`The ramps at x = ${ramps[i - 1].x} and x = ${ramps[i].x} overlap.`);
+  // Ramps and hills each shape the surface, so no two may overlap.
+  const shaped = elements
+    .filter((e): e is RampElement | HillsElement => e.type === "ramp" || e.type === "hills")
+    .sort((a, b) => a.x - b.x);
+  for (let i = 1; i < shaped.length; i++) {
+    const [a, b] = [shaped[i - 1], shaped[i]];
+    if (b.x <= a.x + a.width) fail(`The ${a.type === "ramp" ? "ramp" : "hills"} at x = ${a.x} and the ${b.type === "ramp" ? "ramp" : "hills"} at x = ${b.x} overlap.`);
   }
   if (elements.filter((e) => e.type === "boost").length > LIMITS.maxBoosts) {
     fail(`A level can have at most ${LIMITS.maxBoosts} speed pads.`);
@@ -187,7 +217,11 @@ export function buildLevel(file: LevelFile): LevelData {
     .filter((e): e is BoostElement => e.type === "boost")
     .map((e) => ({ x: e.x, width: e.width }))
     .sort((a, b) => a.x - b.x);
-  return { name: file.name, length: file.length, topping: file.topping, ground, sausages, ramps, boosts };
+  const hills: Hills[] = file.elements
+    .filter((e): e is HillsElement => e.type === "hills")
+    .map((e) => ({ x: e.x, width: e.width, height: e.height, waves: e.waves }))
+    .sort((a, b) => a.x - b.x);
+  return { name: file.name, length: file.length, topping: file.topping, ground, sausages, ramps, boosts, hills };
 }
 
 /** Writes a level file as tidy JSON, one element per line. */
