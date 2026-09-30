@@ -9,13 +9,28 @@ import { parseLevelFile } from "./levels/format";
 
 const KEY = "doughnyrun.v1";
 
-interface Saved {
+export interface Saved {
+  /** Which campaign numbering the ids follow; see migrate(). */
+  campaign?: number;
   completed: string[];
   best: Record<string, number>;
   custom: LevelFile[];
 }
 
-let memory: Saved = { completed: [], best: {}, custom: [] };
+let memory: Saved = { campaign: 2, completed: [], best: {}, custom: [] };
+
+/**
+ * The first campaign had two levels; the second put a new level between
+ * them, so the glaze level moved from 1-2 to 1-3. Progress saved under the
+ * old numbering follows the level to its new id.
+ */
+export function migrate(data: Saved): Saved {
+  if ((data.campaign ?? 1) >= 2) return data;
+  const rename = (id: string): string => (id === "1-2" ? "1-3" : id);
+  const best: Record<string, number> = {};
+  for (const [id, score] of Object.entries(data.best)) best[rename(id)] = score;
+  return { ...data, campaign: 2, completed: data.completed.map(rename), best };
+}
 
 function load(): Saved {
   try {
@@ -30,11 +45,12 @@ function load(): Saved {
           // A saved level that no longer passes the checks is dropped.
         }
       }
-      memory = {
+      memory = migrate({
+        campaign: typeof data.campaign === "number" ? data.campaign : 1,
         completed: Array.isArray(data.completed) ? data.completed.filter((c) => typeof c === "string") : [],
         best: typeof data.best === "object" && data.best ? data.best : {},
         custom,
-      };
+      });
     }
   } catch {
     // Storage unavailable: keep what is in memory.
@@ -51,10 +67,14 @@ function save(data: Saved): void {
   }
 }
 
-/** A campaign level is open once the one before it has been finished. */
+/**
+ * A campaign level is open once the one before it has been finished, and
+ * stays open once finished itself, even when a new level is added before it.
+ */
 export function isUnlocked(index: number): boolean {
   if (index <= 0) return true;
-  return load().completed.includes(CAMPAIGN[index - 1].id);
+  const done = load().completed;
+  return done.includes(CAMPAIGN[index - 1].id) || done.includes(CAMPAIGN[index].id);
 }
 
 export function bestScore(id: string): number {

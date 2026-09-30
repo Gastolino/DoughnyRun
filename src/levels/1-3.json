@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "name": "Glaze Heights",
+  "length": 12000,
+  "topping": "glaze",
+  "elements": [
+    { "type": "sausage", "x": 600, "y": 412, "length": 200 },
+    { "type": "gap", "x": 1200, "width": 700 },
+    { "type": "gap", "x": 2150, "width": 800 },
+    { "type": "sausage", "x": 2300, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 2580, "y": 110, "length": 40 },
+    { "type": "sausage", "x": 3500, "y": 150, "length": 40 },
+    { "type": "gap", "x": 4150, "width": 800 },
+    { "type": "sausage", "x": 4300, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 4580, "y": 100, "length": 40 },
+    { "type": "sausage", "x": 5400, "y": 412, "length": 160 },
+    { "type": "gap", "x": 5850, "width": 650 },
+    { "type": "sausage", "x": 6000, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 6900, "y": 412, "length": 240 },
+    { "type": "gap", "x": 7500, "width": 800 },
+    { "type": "sausage", "x": 7650, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 7930, "y": 110, "length": 40 },
+    { "type": "sausage", "x": 8800, "y": 150, "length": 40 },
+    { "type": "gap", "x": 9400, "width": 850 },
+    { "type": "sausage", "x": 9550, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 9830, "y": 100, "length": 40 },
+    { "type": "sausage", "x": 10700, "y": 412, "length": 200 },
+    { "type": "gap", "x": 11100, "width": 700 },
+    { "type": "sausage", "x": 11250, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 11530, "y": 110, "length": 40 }
+  ]
+}

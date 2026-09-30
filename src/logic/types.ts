@@ -14,6 +14,23 @@ export interface GroundSegment {
   width: number;
 }
 
+/**
+ * A kicker ramp. Its surface curves up from the ground at x to its full
+ * height at the lip, x + width, and then drops straight back down. A doughnut
+ * rolling off the lip keeps the lip's upward speed.
+ */
+export interface Ramp {
+  x: number;
+  width: number;
+  height: number;
+}
+
+/** A speed pad on the ground. Rolling over it sends the doughnut into boost. */
+export interface Boost {
+  x: number;
+  width: number;
+}
+
 /** A level ready to play: ground worked out from the gaps, sausages sorted. */
 export interface LevelData {
   name: string;
@@ -23,4 +40,8 @@ export interface LevelData {
   ground: GroundSegment[];
   /** Sorted by x. */
   sausages: Sausage[];
+  /** Sorted by x, and never overlapping. */
+  ramps: Ramp[];
+  /** Sorted by x. */
+  boosts: Boost[];
 }

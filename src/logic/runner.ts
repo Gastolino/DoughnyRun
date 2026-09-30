@@ -1,3 +1,4 @@
+import { boostEnd, rampAt, rampSlope, slopeAt, surfaceAt } from "./terrain";
 import { centreOffset, checkSausage, ringAt } from "./threading";
 import { DOUGHNUT, GRIND, TUNING, VIEW } from "./tuning";
 import type { Grade } from "./tuning";
@@ -56,6 +57,7 @@ export interface RunnerState {
   grounded: boolean;
   coyote: number;
   buffer: number;
+  /** The jump has been held since takeoff: it can still be cut, and it hangs at the top. */
   canCutJump: boolean;
   airJumpsLeft: number;
   grinds: Grind[];
@@ -69,6 +71,8 @@ export interface RunnerState {
   airGrinds: number;
   /** Sausages the doughnut smashed through on its free crash. */
   smashed: number[];
+  /** Index of the speed pad whose boost is running, or -1. */
+  boostPad: number;
   dead: DeathCause | null;
   finished: boolean;
 }
@@ -88,6 +92,10 @@ export type RunnerEvent =
   | { type: "jump" }
   | { type: "airJump" }
   | { type: "land" }
+  /** Left the surface without jumping, going upwards: off a ramp's lip. */
+  | { type: "launch" }
+  /** Rolled onto a speed pad. */
+  | { type: "boost"; index: number }
   | { type: "grindStart"; index: number }
   | ({ type: "grindEnd" } & GrindResult)
   | { type: "skip"; index: number }
@@ -120,13 +128,10 @@ export function createRunner(level: LevelData, options: RunnerOptions = PLAIN): 
     chain: 0,
     airGrinds: 0,
     smashed: [],
+    boostPad: -1,
     dead: null,
     finished: false,
   };
-}
-
-export function isOverGround(level: LevelData, x: number): boolean {
-  return level.ground.some((g) => x >= g.x && x <= g.x + g.width);
 }
 
 export function cloneRunner(s: RunnerState): RunnerState {
@@ -153,12 +158,19 @@ export function stepRunner(
   const events: RunnerEvent[] = [];
   if (s.dead || s.finished) return events;
 
+  const prevX = s.x;
   s.x += speedOf(s) * dt;
+  if (s.boostPad >= 0 && s.x > boostEnd(level.boosts[s.boostPad])) s.boostPad = -1;
   s.buffer = input.pressed ? TUNING.jumpBufferTime : Math.max(0, s.buffer - dt);
   s.coyote = s.grounded ? TUNING.coyoteTime : Math.max(0, s.coyote - dt);
 
   if (s.buffer > 0 && (s.grounded || s.coyote > 0)) {
-    s.vy = -TUNING.jumpVelocity;
+    // A jump from a ramp gets the ramp's kick: the upward speed of its lip,
+    // wherever on the ramp the jump is taken. Just off the lip, the doughnut
+    // still carries that speed.
+    const ramp = s.grounded ? rampAt(level, s.x) : null;
+    const kick = ramp ? -speedOf(s) * rampSlope(ramp, ramp.x + ramp.width) : Math.min(0, s.vy);
+    s.vy = -TUNING.jumpVelocity + kick;
     s.grounded = false;
     s.coyote = 0;
     s.buffer = 0;
@@ -178,29 +190,56 @@ export function stepRunner(
   }
 
   const prevBottom = s.y + R;
-  const hanging = input.held && Math.abs(s.vy) < TUNING.apexHangSpeed;
+  // A jump held all the way up hangs at the top, whether or not the button
+  // is let go once it has stopped rising. So the only choice a jump offers is
+  // when to cut it, which keeps the solver's search small.
+  const hanging = s.canCutJump && Math.abs(s.vy) < TUNING.apexHangSpeed;
   const gravity = hanging ? TUNING.gravity * TUNING.apexHangGravityFactor : TUNING.gravity;
   s.vy = Math.min(s.vy + gravity * dt, TUNING.maxFallSpeed);
   s.y += s.vy * dt;
   const bottom = s.y + R;
 
-  if (isOverGround(level, s.x)) {
-    if (prevBottom > VIEW.groundY + SURFACE_TOLERANCE) {
+  const surface = surfaceAt(level, s.x);
+  let touching = false;
+  if (surface !== null) {
+    // Rolling up a ramp or off its lip, the surface moves between steps, so
+    // the doughnut is measured against the lower of the two surfaces.
+    const prevSurface = surfaceAt(level, prevX) ?? surface;
+    if (prevBottom > Math.max(surface, prevSurface) + SURFACE_TOLERANCE) {
       // Already below the surface when the ground arrived: the doughnut has
       // run into the side of a cliff.
       return die(s, "wall", events);
     }
-    if (s.vy >= 0 && bottom >= VIEW.groundY) {
-      s.y = VIEW.groundY - R;
-      s.vy = 0;
-      if (!s.grounded) events.push({ type: "land" });
-      s.grounded = true;
-      s.airGrinds = 0;
-      s.canCutJump = false;
-      s.airJumpsLeft = options.airJumps;
+    if (bottom >= surface) {
+      s.y = surface - R;
+      // On a ramp the surface itself rises; the doughnut rides it at that
+      // speed, and keeps it when it leaves the lip.
+      const surfaceVy = -speedOf(s) * slopeAt(level, s.x);
+      if (s.vy >= surfaceVy) {
+        touching = true;
+        s.vy = surfaceVy;
+        if (!s.grounded) events.push({ type: "land" });
+        s.grounded = true;
+        s.airGrinds = 0;
+        s.canCutJump = false;
+        s.airJumpsLeft = options.airJumps;
+      }
     }
-  } else {
+  }
+  if (!touching && s.grounded) {
     s.grounded = false;
+    if (s.vy < 0) events.push({ type: "launch" });
+  }
+
+  if (s.grounded) {
+    for (let i = 0; i < level.boosts.length; i++) {
+      const b = level.boosts[i];
+      if (b.x > s.x) break;
+      if (s.x <= b.x + b.width && s.boostPad !== i) {
+        s.boostPad = i;
+        events.push({ type: "boost", index: i });
+      }
+    }
   }
 
   if (s.y - R > VIEW.height) return die(s, "fell", events);
@@ -273,7 +312,7 @@ function finishGrind(s: RunnerState, grind: Grind, length: number): RunnerEvent 
 }
 
 export function speedOf(s: RunnerState): number {
-  return TUNING.gears[s.gear];
+  return s.boostPad >= 0 ? TUNING.boostSpeed : TUNING.gears[s.gear];
 }
 
 function shiftGear(s: RunnerState, by: number): void {

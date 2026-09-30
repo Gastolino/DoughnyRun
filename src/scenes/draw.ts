@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { VIEW } from "../logic/tuning";
-import type { LevelData, Sausage } from "../logic/types";
+import { surfaceAt } from "../logic/terrain";
+import type { Boost, LevelData, Ramp, Sausage } from "../logic/types";
 import { COLORS } from "./palette";
 
 // Drawing shared by the level and the editor. Phaser redraws Graphics shapes
@@ -307,7 +308,126 @@ export function drawGround(scene: Phaser.Scene, level: LevelData): Phaser.GameOb
     });
     out.push(body, glaze);
   }
+  for (const r of level.ramps) out.push(...drawRamp(scene, level, r));
+  for (const b of level.boosts) out.push(...drawBoost(scene, level, b));
   return out;
+}
+
+// ---- Ramps ---------------------------------------------------------------------
+//
+// A ramp is a wedge of dough whose top curves up to the lip, glazed like the
+// ground: the glaze follows the curve with the same even waves underneath and
+// drips down the lip's face.
+
+const RAMP_PAD = 4;
+
+function makeRamp(scene: Phaser.Scene, r: Ramp): string {
+  const key = `ramp:${r.width}x${r.height}`;
+  if (scene.textures.exists(key)) return key;
+  const w = r.width + GLAZE_SIDE;
+  const hgt = r.height + RAMP_PAD;
+  const tex = scene.textures.createCanvas(key, Math.ceil(w), Math.ceil(hgt));
+  if (!tex) return key;
+  const g = tex.getContext();
+  const top = (px: number): number => RAMP_PAD + r.height - r.height * (px / r.width) ** 2;
+  const foot = RAMP_PAD + r.height;
+
+  // Dough, with a darker lip face.
+  g.beginPath();
+  g.moveTo(0, foot);
+  for (let px = 0; px <= r.width; px += 2) g.lineTo(px, top(px));
+  g.lineTo(r.width, foot);
+  g.closePath();
+  g.fillStyle = css(DOUGH_COLOR);
+  g.fill();
+  g.fillStyle = "#c98a4a";
+  g.fillRect(r.width - 5, RAMP_PAD, 5, r.height);
+
+  // Glaze: along the curve, then down the face of the lip.
+  const band = (px: number): number => Math.min(foot, top(px) + 13 + 4 * Math.sin((px / GLAZE_WAVE) * Math.PI * 2));
+  const faceDrop = Math.min(r.height, 26);
+  const outline = (dy: number) => {
+    g.beginPath();
+    g.moveTo(0, foot);
+    for (let px = 0; px <= r.width; px += 2) g.lineTo(px, top(px));
+    g.quadraticCurveTo(r.width + GLAZE_SIDE * 0.6, RAMP_PAD, r.width + GLAZE_SIDE * 0.5, RAMP_PAD + 8);
+    g.lineTo(r.width + GLAZE_SIDE * 0.45, RAMP_PAD + faceDrop + dy - 6);
+    g.quadraticCurveTo(r.width + GLAZE_SIDE * 0.2, RAMP_PAD + faceDrop + dy + 2, r.width - 3, RAMP_PAD + faceDrop + dy - 6);
+    for (let px = r.width - 4; px >= 0; px -= 2) g.lineTo(px, band(px) + dy);
+    g.closePath();
+  };
+  outline(2.5);
+  g.fillStyle = GLAZE.shadow;
+  g.fill();
+  outline(0);
+  g.fillStyle = GLAZE.fill;
+  g.fill();
+  g.strokeStyle = GLAZE.shine;
+  g.lineWidth = 2;
+  g.lineCap = "round";
+  g.beginPath();
+  for (let px = 8; px <= r.width - 6; px += 2) {
+    if (px === 8) g.moveTo(px, top(px) + 3.5);
+    else g.lineTo(px, top(px) + 3.5);
+  }
+  g.stroke();
+  tex.refresh();
+  return key;
+}
+
+function drawRamp(scene: Phaser.Scene, level: LevelData, r: Ramp): Phaser.GameObjects.GameObject[] {
+  const out: Phaser.GameObjects.GameObject[] = [];
+  // Where the ramp overhangs a void, its dough runs down out of sight.
+  const depth = VIEW.height * 2;
+  let x = r.x;
+  const end = r.x + r.width;
+  while (x < end) {
+    const seg = level.ground.find((g) => x >= g.x && x < g.x + g.width);
+    if (seg) {
+      x = seg.x + seg.width;
+      continue;
+    }
+    const next = level.ground.find((g) => g.x > x);
+    const stop = Math.min(end, next ? next.x : end);
+    out.push(scene.add.rectangle(x, VIEW.groundY, stop - x, depth, DOUGH_COLOR).setOrigin(0, 0).setDepth(DEPTH.ground));
+    x = stop;
+  }
+  const key = makeRamp(scene, r);
+  out.push(
+    scene.add
+      .image(r.x, VIEW.groundY - r.height - RAMP_PAD, key)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.ground),
+  );
+  return out;
+}
+
+// ---- Speed pads ----------------------------------------------------------------
+//
+// A candy strip set into the glaze, with chevrons that run forwards.
+
+const CHEVRON = 26;
+
+function drawBoost(scene: Phaser.Scene, level: LevelData, b: Boost): Phaser.GameObjects.GameObject[] {
+  const tile = bake(scene, "boost-chevron", CHEVRON, 14, (g) => {
+    g.fillStyle(0xff4fa3);
+    g.fillRect(0, 0, CHEVRON, 14);
+    g.fillStyle(0xfff27e);
+    g.fillTriangle(4, 1, 13, 7, 4, 13);
+    g.fillStyle(0xff4fa3);
+    g.fillTriangle(4, 4, 9, 7, 4, 10);
+    g.fillStyle(0x7ec8ff);
+    g.fillTriangle(14, 1, 23, 7, 14, 13);
+    g.fillStyle(0xff4fa3);
+    g.fillTriangle(14, 4, 19, 7, 14, 10);
+  });
+  const y = (surfaceAt(level, b.x + b.width / 2) ?? VIEW.groundY) + 1;
+  const rim = scene.add.rectangle(b.x - 3, y - 9, b.width + 6, 18, 0xffffff).setOrigin(0, 0).setDepth(DEPTH.ground);
+  rim.setStrokeStyle(2, 0xff9cc8);
+  const strip = scene.add.tileSprite(b.x, y - 7, b.width, 14, tile).setOrigin(0, 0).setDepth(DEPTH.ground);
+  scene.tweens.add({ targets: strip, tilePositionX: -CHEVRON, duration: 260, repeat: -1 });
+  strip.once(Phaser.GameObjects.Events.DESTROY, () => scene.tweens.killTweensOf(strip));
+  return [rim, strip];
 }
 
 /**

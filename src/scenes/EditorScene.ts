@@ -25,27 +25,68 @@ export interface EditorRequest {
   file?: LevelFile;
 }
 
-type Tool = "select" | "sausage" | "gap";
+type Tool = "select" | "sausage" | "gap" | "ramp" | "boost";
 
 type Drag =
   | { kind: "pan"; startX: number; startY: number; scrollX: number; scrollY: number }
   | { kind: "move"; index: number; dx: number; dy: number; moved: boolean }
-  | { kind: "resize-left" | "resize-right"; index: number }
+  | { kind: "resize-left" | "resize-right" | "resize-height"; index: number }
   | { kind: "finish" }
   | { kind: "new-sausage"; index: number; anchor: number }
   | { kind: "new-gap"; index: number; anchor: number };
+
+type Part = "body" | "left" | "right" | "top";
 
 const SNAP = 10;
 const EDGE = 10;
 const ZOOMS = [1, 0.75, 0.5, 0.35];
 const DEFAULT_SAUSAGE = 40;
+const DEFAULT_RAMP = { width: 300, height: 80 };
+const DEFAULT_BOOST = 160;
 const START_X = 80;
 
 const TOOL_HELP: Record<Tool, string> = {
   select: "Drag a sausage, a gap or the finish flag to move it; drag an end to resize. Drag empty sky to scroll.",
   sausage: "Click to place a sausage; drag sideways while placing to set its length.",
   gap: "Drag along the ground to cut a gap.",
+  ramp: "Drag along the ground to place a ramp; select it and drag its lip up or down to set its height.",
+  boost: "Drag along the ground to lay a speed pad.",
 };
+
+/** Length along the ground, whatever the element calls it. */
+function sizeOf(e: LevelElement): number {
+  return e.type === "sausage" ? e.length : e.width;
+}
+
+function minSize(e: LevelElement): number {
+  switch (e.type) {
+    case "sausage":
+      return LIMITS.minSausageLength;
+    case "gap":
+      return LIMITS.minGapWidth;
+    case "ramp":
+      return LIMITS.minRampWidth;
+    case "boost":
+      return LIMITS.minBoostWidth;
+  }
+}
+
+function setSize(e: LevelElement, v: number): void {
+  switch (e.type) {
+    case "sausage":
+      e.length = clamp(v, LIMITS.minSausageLength, LIMITS.maxSausageLength);
+      break;
+    case "gap":
+      e.width = clamp(v, LIMITS.minGapWidth, LIMITS.maxLength);
+      break;
+    case "ramp":
+      e.width = clamp(v, LIMITS.minRampWidth, LIMITS.maxRampWidth);
+      break;
+    case "boost":
+      e.width = clamp(v, LIMITS.minBoostWidth, LIMITS.maxBoostWidth);
+      break;
+  }
+}
 
 function newLevel(): LevelFile {
   return {
@@ -291,6 +332,17 @@ export class EditorScene extends Phaser.Scene {
         g.fillStyle(0x1e6fff, 1);
         g.fillRect(e.x - hs / 2, e.y - hs / 2, hs, hs);
         g.fillRect(e.x + e.length - hs / 2, e.y - hs / 2, hs, hs);
+      } else if (e.type === "ramp") {
+        g.strokeRect(e.x, VIEW.groundY - e.height, e.width, e.height);
+        g.fillStyle(0x1e6fff, 1);
+        g.fillRect(e.x - hs / 2, VIEW.groundY - hs / 2, hs, hs);
+        g.fillRect(e.x + e.width - hs / 2, VIEW.groundY - hs / 2, hs, hs);
+        g.fillRect(e.x + e.width - hs / 2, VIEW.groundY - e.height - hs / 2, hs, hs);
+      } else if (e.type === "boost") {
+        g.strokeRect(e.x - 4, VIEW.groundY - 14, e.width + 8, 24);
+        g.fillStyle(0x1e6fff, 1);
+        g.fillRect(e.x - hs / 2, VIEW.groundY - hs / 2, hs, hs);
+        g.fillRect(e.x + e.width - hs / 2, VIEW.groundY - hs / 2, hs, hs);
       } else {
         g.strokeRect(e.x, VIEW.groundY - 6, e.width, VIEW.height - VIEW.groundY + 6);
         g.fillStyle(0x1e6fff, 1);
@@ -302,7 +354,7 @@ export class EditorScene extends Phaser.Scene {
 
   // ---- Pointer -------------------------------------------------------------
 
-  private hit(wx: number, wy: number): { index: number; part: "body" | "left" | "right" } | "finish" | null {
+  private hit(wx: number, wy: number): { index: number; part: Part } | "finish" | null {
     const pad = EDGE / this.cameras.main.zoom;
     if (Math.abs(wx - this.file.length) < pad + 6 && wy > VIEW.groundY - 170 && wy < VIEW.groundY + 10) return "finish";
     for (let i = this.file.elements.length - 1; i >= 0; i--) {
@@ -313,6 +365,25 @@ export class EditorScene extends Phaser.Scene {
       if (Math.abs(wx - e.x) <= pad) return { index: i, part: "left" };
       if (Math.abs(wx - (e.x + e.length)) <= pad) return { index: i, part: "right" };
       if (wx > e.x && wx < e.x + e.length) return { index: i, part: "body" };
+    }
+    // Speed pads lie on the ground, and ramps stand on it.
+    for (let i = this.file.elements.length - 1; i >= 0; i--) {
+      const e = this.file.elements[i];
+      if (e.type !== "boost" || Math.abs(wy - VIEW.groundY) > 12 + pad) continue;
+      if (Math.abs(wx - e.x) <= pad) return { index: i, part: "left" };
+      if (Math.abs(wx - (e.x + e.width)) <= pad) return { index: i, part: "right" };
+      if (wx > e.x && wx < e.x + e.width) return { index: i, part: "body" };
+    }
+    for (let i = this.file.elements.length - 1; i >= 0; i--) {
+      const e = this.file.elements[i];
+      if (e.type !== "ramp") continue;
+      const lipY = VIEW.groundY - e.height;
+      if (Math.abs(wx - (e.x + e.width)) <= pad * 1.5 && Math.abs(wy - lipY) <= pad * 1.5) return { index: i, part: "top" };
+      if (wy < lipY - pad || wy > VIEW.groundY + pad) continue;
+      if (Math.abs(wx - e.x) <= pad && wy > VIEW.groundY - pad * 2) return { index: i, part: "left" };
+      if (Math.abs(wx - (e.x + e.width)) <= pad) return { index: i, part: "right" };
+      const rise = e.height * ((wx - e.x) / e.width) ** 2;
+      if (wx > e.x && wx < e.x + e.width && wy >= VIEW.groundY - rise - pad) return { index: i, part: "body" };
     }
     if (wy > VIEW.groundY - pad) {
       for (let i = this.file.elements.length - 1; i >= 0; i--) {
@@ -346,10 +417,16 @@ export class EditorScene extends Phaser.Scene {
         this.drag = { kind: "new-sausage", index: this.selected ?? 0, anchor: x };
         return;
       }
-      if (this.tool === "gap") {
+      if (this.tool === "gap" || this.tool === "ramp" || this.tool === "boost") {
         const x = clamp(snap(w.x, fine), 0, this.file.length);
+        const element: LevelElement =
+          this.tool === "gap"
+            ? { type: "gap", x, width: LIMITS.minGapWidth }
+            : this.tool === "ramp"
+              ? { type: "ramp", x, width: DEFAULT_RAMP.width, height: DEFAULT_RAMP.height }
+              : { type: "boost", x, width: DEFAULT_BOOST };
         this.commit(() => {
-          this.file.elements.push({ type: "gap", x, width: LIMITS.minGapWidth });
+          this.file.elements.push(element);
           this.selected = this.file.elements.length - 1;
         });
         this.drag = { kind: "new-gap", index: this.selected ?? 0, anchor: x };
@@ -370,7 +447,8 @@ export class EditorScene extends Phaser.Scene {
         if (hit.part === "body") {
           this.drag = { kind: "move", index: hit.index, dx: w.x - e.x, dy: e.type === "sausage" ? w.y - e.y : 0, moved: false };
         } else {
-          this.drag = { kind: hit.part === "left" ? "resize-left" : "resize-right", index: hit.index };
+          const kind = hit.part === "left" ? "resize-left" : hit.part === "top" ? "resize-height" : "resize-right";
+          this.drag = { kind, index: hit.index };
         }
         this.refreshUi();
         return;
@@ -399,13 +477,9 @@ export class EditorScene extends Phaser.Scene {
         }
         const e = this.file.elements[d.index];
         if (!e) return;
-        const min = e.type === "sausage" ? LIMITS.minSausageLength : LIMITS.minGapWidth;
+        const min = minSize(e);
         const x = clamp(snap(w.x, fine), 0, L);
-        const current = e.type === "sausage" ? e.length : e.width;
-        const setSize = (v: number) => {
-          if (e.type === "sausage") e.length = clamp(v, min, LIMITS.maxSausageLength);
-          else e.width = clamp(v, min, LIMITS.maxLength);
-        };
+        const current = sizeOf(e);
         switch (d.kind) {
           case "move":
             d.moved = true;
@@ -416,18 +490,26 @@ export class EditorScene extends Phaser.Scene {
             const right = e.x + current;
             const nx = Math.min(x, right - min);
             e.x = Math.max(0, nx);
-            setSize(right - e.x);
+            setSize(e, right - e.x);
             break;
           }
           case "resize-right":
-            setSize(x - e.x);
+            setSize(e, x - e.x);
+            break;
+          case "resize-height":
+            if (e.type === "ramp") {
+              e.height = clamp(snap(VIEW.groundY - w.y, fine), LIMITS.minRampHeight, LIMITS.maxRampHeight);
+            }
             break;
           case "new-sausage":
           case "new-gap": {
             const lo = Math.min(d.anchor, x);
             const hi = Math.max(d.anchor, x);
-            e.x = lo;
-            setSize(Math.max(min, hi - lo));
+            // A click without a drag keeps the element's default size.
+            if (hi - lo > SNAP || e.type === "gap" || e.type === "sausage") {
+              e.x = lo;
+              setSize(e, Math.max(min, hi - lo));
+            }
             break;
           }
         }
@@ -485,6 +567,8 @@ export class EditorScene extends Phaser.Scene {
       else if (e.key === "v" || e.key === "V") this.setTool("select");
       else if (e.key === "s" || e.key === "S") this.setTool("sausage");
       else if (e.key === "g" || e.key === "G") this.setTool("gap");
+      else if (e.key === "r" || e.key === "R") this.setTool("ramp");
+      else if (e.key === "b" || e.key === "B") this.setTool("boost");
       else if (e.key === "Delete" || e.key === "Backspace") this.deleteSelected();
       else if (e.key === "Escape") {
         this.selected = null;
@@ -650,6 +734,8 @@ export class EditorScene extends Phaser.Scene {
       select: button("Select", () => this.setTool("select"), "Select and drag (V)"),
       sausage: button("Sausage", () => this.setTool("sausage"), "Place sausages (S)"),
       gap: button("Gap", () => this.setTool("gap"), "Cut gaps (G)"),
+      ramp: button("Ramp", () => this.setTool("ramp"), "Place kicker ramps (R)"),
+      boost: button("Speed pad", () => this.setTool("boost"), "Lay speed pads (B)"),
     };
     const undo = button("Undo", () => this.undo(), "Undo (Ctrl+Z)");
     const redo = button("Redo", () => this.redo(), "Redo (Ctrl+Shift+Z)");
@@ -683,7 +769,7 @@ export class EditorScene extends Phaser.Scene {
     const top = h(
       "div",
       { id: "editor-top", class: "editor-bar" },
-      h("div", { class: "group", role: "group", "aria-label": "Tools" }, tools.select, tools.sausage, tools.gap),
+      h("div", { class: "group", role: "group", "aria-label": "Tools" }, tools.select, tools.sausage, tools.gap, tools.ramp, tools.boost),
       h("div", { class: "group" }, undo, redo),
       h(
         "div",
@@ -789,15 +875,29 @@ export class EditorScene extends Phaser.Scene {
       return [h("label", { for: id }, label), input];
     };
     const L = this.file.length;
-    ui.selection.append(h("strong", {}, e.type === "sausage" ? "Sausage" : "Gap"));
-    if (e.type === "sausage") {
-      ui.selection.append(
-        ...field("x", "x", e.x, 0, L),
-        ...field("y", "y", e.y, LIMITS.minY, LIMITS.maxY),
-        ...field("Length", "length", e.length, LIMITS.minSausageLength, LIMITS.maxSausageLength),
-      );
-    } else {
-      ui.selection.append(...field("x", "x", e.x, 0, L), ...field("Width", "width", e.width, LIMITS.minGapWidth, LIMITS.maxLength));
+    const titles = { sausage: "Sausage", gap: "Gap", ramp: "Ramp", boost: "Speed pad" } as const;
+    ui.selection.append(h("strong", {}, titles[e.type]));
+    switch (e.type) {
+      case "sausage":
+        ui.selection.append(
+          ...field("x", "x", e.x, 0, L),
+          ...field("y", "y", e.y, LIMITS.minY, LIMITS.maxY),
+          ...field("Length", "length", e.length, LIMITS.minSausageLength, LIMITS.maxSausageLength),
+        );
+        break;
+      case "gap":
+        ui.selection.append(...field("x", "x", e.x, 0, L), ...field("Width", "width", e.width, LIMITS.minGapWidth, LIMITS.maxLength));
+        break;
+      case "ramp":
+        ui.selection.append(
+          ...field("x", "x", e.x, 0, L),
+          ...field("Width", "width", e.width, LIMITS.minRampWidth, LIMITS.maxRampWidth),
+          ...field("Height", "height", e.height, LIMITS.minRampHeight, LIMITS.maxRampHeight),
+        );
+        break;
+      case "boost":
+        ui.selection.append(...field("x", "x", e.x, 0, L), ...field("Width", "width", e.width, LIMITS.minBoostWidth, LIMITS.maxBoostWidth));
+        break;
     }
     ui.selection.append(
       h("button", { type: "button", onclick: () => this.duplicateSelected(), title: "Duplicate (Ctrl+D)" }, "Duplicate"),
