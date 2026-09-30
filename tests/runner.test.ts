@@ -5,7 +5,7 @@ import { solveLevel, STEPS_PER_DECISION } from "../src/logic/solver";
 import { DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
 import type { LevelData, Sausage } from "../src/logic/types";
 
-const flat: LevelData = { name: "flat", length: 100000, topping: "plain", ground: [{ x: 0, width: 100000 }], sausages: [] };
+const flat: LevelData = { name: "flat", length: 100000, topping: "plain", ground: [{ x: 0, width: 100000 }], sausages: [], ramps: [], boosts: [], hills: [] };
 const restY = VIEW.groundY - DOUGHNUT.outerRadius;
 const withSausages = (...sausages: Sausage[]): LevelData => ({ ...flat, sausages });
 const cocktail = (x: number, y: number, length = 200): Sausage => ({ x, y, length, thickness: 16 });
@@ -45,6 +45,23 @@ describe("runner movement", () => {
     expect(tap).toBeGreaterThan(20);
     expect(half).toBeGreaterThan(tap);
     expect(full).toBeGreaterThan(half);
+  });
+
+  it("keeps the hang at the top of a full jump when the button is let go after the rise", () => {
+    const land = (release: (s: RunnerState) => boolean) => {
+      const s = createRunner(flat);
+      let held = true;
+      for (let i = 0; i < 400; i++) {
+        if (held && i > 0 && release(s)) held = false;
+        stepRunner(s, { held, pressed: i === 0 }, flat);
+        if (i > 2 && s.grounded) return s.x;
+      }
+      return NaN;
+    };
+    const heldThrough = land(() => false);
+    expect(land((s) => s.vy >= 0)).toBeCloseTo(heldThrough, 6);
+    // Letting go while still rising cuts the jump short.
+    expect(land((s) => s.vy > -400)).toBeLessThan(heldThrough - 50);
   });
 
   it("lands and reports it", () => {

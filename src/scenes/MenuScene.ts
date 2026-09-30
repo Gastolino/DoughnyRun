@@ -22,15 +22,18 @@ export class MenuScene extends Phaser.Scene {
     this.cameras.main.setScroll(0, 0);
     addSkySprinkles(this);
     drawBackdrop(this, VIEW.width);
-    drawGround(this, { name: "", length: VIEW.width, topping: "plain", ground: [{ x: 0, width: VIEW.width * 2 }], sausages: [] });
+    drawGround(this, { name: "", length: VIEW.width, topping: "plain", ground: [{ x: 0, width: VIEW.width * 2 }], sausages: [], ramps: [], boosts: [], hills: [] });
     this.add.image(VIEW.playerScreenX, VIEW.groundY - 48, "doughnut-back-plain");
     this.add.image(VIEW.playerScreenX, VIEW.groundY - 48, "doughnut-front-plain");
     this.add.image(VIEW.playerScreenX + EYES_OFFSET.x, VIEW.groundY - 48 + EYES_OFFSET.y, "doughnut-eyes");
 
-    // Deep links: #demo lets the solver play the first level.
-    if (window.location.hash === "#demo") {
+    // Deep links: #demo lets the solver play the first level, and #demo-1-2
+    // (any campaign id) plays that level.
+    const demo = /^#demo(?:-(.+))?$/.exec(window.location.hash);
+    if (demo) {
       history.replaceState(null, "", window.location.pathname + window.location.search);
-      this.play({ level: CAMPAIGN[0].level, campaignIndex: 0, returnTo: "menu", demo: true });
+      const index = Math.max(0, CAMPAIGN.findIndex((c) => c.id === (demo[1] ?? CAMPAIGN[0].id)));
+      this.play({ level: CAMPAIGN[index].level, campaignIndex: index, returnTo: "menu", demo: true });
       return;
     }
     this.showMenu();

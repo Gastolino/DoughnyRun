@@ -53,7 +53,7 @@ describe("level files", () => {
     [{ ...sample, length: 100 }, /length.*between/],
     [{ ...sample, topping: "sprinkles" }, /topping/],
     [{ ...sample, elements: "none" }, /elements/],
-    [{ ...sample, elements: [{ type: "ramp", x: 1 }] }, /Element 1.*unknown "type"/],
+    [{ ...sample, elements: [{ type: "trampoline", x: 1 }] }, /Element 1.*unknown "type"/],
     [{ ...sample, elements: [{ type: "sausage", x: 10, y: 600, length: 40 }] }, /Element 1.*"y"/],
     [{ ...sample, elements: [{ type: "gap", x: 10, width: "wide" }] }, /Element 1.*"width" must be a number/],
     [null, /object/],

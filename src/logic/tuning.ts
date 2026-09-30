@@ -10,14 +10,20 @@ export const TUNING = {
   // low hop clears a void that is still narrow enough to thread at 320, so a
   // raised sausage over it could be skipped. The level tests catch this.
   gears: [320, 360, 400, 440, 490, 520],
+  // A speed pad lifts the doughnut above its top gear for a stretch of
+  // ground, measured from the pad's far end. Levels place pads where the
+  // extra speed cannot be used to hop a void without threading its sausage.
+  boostSpeed: 700,
+  boostDistance: 1400,
   gravity: 2200,
   jumpVelocity: 820,
   // Releasing jump while rising multiplies the upward speed by this factor,
   // which gives the player control over jump height.
   jumpCutFactor: 0.45,
   maxFallSpeed: 1400,
-  // Near the top of a held jump, gravity weakens so that the doughnut hangs
-  // in the air for a moment. That moment is when it threads raised sausages.
+  // Near the top of a jump held all the way up, gravity weakens so that the
+  // doughnut hangs in the air for a moment. That moment is when it threads
+  // raised sausages.
   apexHangSpeed: 300,
   apexHangGravityFactor: 0.35,
   coyoteTime: 0.1,

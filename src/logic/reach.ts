@@ -21,6 +21,9 @@ const FLAT: LevelData = {
   topping: "glaze",
   ground: [{ x: 0, width: 1e6 }],
   sausages: [],
+  ramps: [],
+  boosts: [],
+  hills: [],
 };
 
 function highest(airJumps: number): number {

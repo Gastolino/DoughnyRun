@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { VIEW } from "../logic/tuning";
-import type { LevelData, Sausage } from "../logic/types";
+import { hillsRise, surfaceAt } from "../logic/terrain";
+import type { Boost, LevelData, Ramp, Sausage } from "../logic/types";
 import { COLORS } from "./palette";
 
 // Drawing shared by the level and the editor. Phaser redraws Graphics shapes
@@ -236,33 +237,73 @@ const GLAZE_DEPTH = 40;
 const GLAZE_SIDE = 12;
 /** Distance between wave crests along the glaze's edge. */
 const GLAZE_WAVE = 34;
+/** Widest piece of glaze drawn as one texture. */
+const GLAZE_PIECE = 2000;
 
-/** The glaze for one stretch of ground, drawn to its exact width. */
-function makeGlaze(scene: Phaser.Scene, x: number, width: number): string {
-  const key = `glaze-seg:${x}:${width}`;
+/**
+ * The glaze for one stretch of ground, drawn to its exact width. Where hills
+ * raise the surface, the texture also holds the dough above ground level, and
+ * the glaze follows the waves; at each end it drips down from the top.
+ */
+function makeGlaze(
+  scene: Phaser.Scene,
+  x: number,
+  width: number,
+  rise: (wx: number) => number,
+  riseKey: string,
+  drips: { left: boolean; right: boolean },
+): string {
+  const key = `glaze-seg:${x}:${width}:${riseKey}:${drips.left}:${drips.right}`;
   if (scene.textures.exists(key)) return key;
+  let maxRise = 0;
+  for (let wx = x; wx <= x + width; wx += 2) maxRise = Math.max(maxRise, rise(wx));
+  maxRise = Math.ceil(maxRise);
   const w = width + GLAZE_SIDE * 2;
-  const tex = scene.textures.createCanvas(key, Math.ceil(w), GLAZE_DEPTH);
+  const tex = scene.textures.createCanvas(key, Math.ceil(w), maxRise + GLAZE_DEPTH);
   if (!tex) return key;
   const g = tex.getContext();
   const left = GLAZE_SIDE;
   const right = GLAZE_SIDE + width;
+  // Canvas y of the surface at canvas x; ground level is y = maxRise.
+  const top = (px: number): number => maxRise - rise(Math.min(x + width, Math.max(x, px - left + x)));
   // Even waves, phased by world position so neighbouring slabs line up.
-  const edge = (px: number): number => 14 + 5 * Math.sin(((px - left + x) / GLAZE_WAVE) * Math.PI * 2);
+  const edge = (px: number): number => top(px) + 14 + 5 * Math.sin(((px - left + x) / GLAZE_WAVE) * Math.PI * 2);
   const sideDrop = 24;
 
-  const outline = (dy: number) => {
+  if (maxRise > 0) {
     g.beginPath();
-    g.moveTo(left, 0);
-    g.lineTo(right, 0);
-    g.quadraticCurveTo(right + GLAZE_SIDE * 0.6, 0, right + GLAZE_SIDE * 0.55, 8);
-    g.lineTo(right + GLAZE_SIDE * 0.5, sideDrop + dy - 6);
-    g.quadraticCurveTo(right + GLAZE_SIDE * 0.25, sideDrop + dy + 2, right - 2, sideDrop + dy - 6);
+    g.moveTo(left, maxRise + 1);
+    for (let px = left; px <= right; px += 2) g.lineTo(px, top(px));
+    g.lineTo(right, top(right));
+    g.lineTo(right, maxRise + 1);
+    g.closePath();
+    g.fillStyle = css(DOUGH_COLOR);
+    g.fill();
+  }
+
+  const outline = (dy: number) => {
+    const tl = top(left);
+    const tr = top(right);
+    g.beginPath();
+    g.moveTo(left, tl);
+    for (let px = left + 2; px < right; px += 2) g.lineTo(px, top(px));
+    g.lineTo(right, tr);
+    if (drips.right) {
+      g.quadraticCurveTo(right + GLAZE_SIDE * 0.6, tr, right + GLAZE_SIDE * 0.55, tr + 8);
+      g.lineTo(right + GLAZE_SIDE * 0.5, tr + sideDrop + dy - 6);
+      g.quadraticCurveTo(right + GLAZE_SIDE * 0.25, tr + sideDrop + dy + 2, right - 2, tr + sideDrop + dy - 6);
+    } else {
+      g.lineTo(right, edge(right) + dy);
+    }
     for (let px = right - 4; px > left + 4; px -= 2) g.lineTo(px, edge(px) + dy);
-    g.lineTo(left + 2, sideDrop + dy - 6);
-    g.quadraticCurveTo(left - GLAZE_SIDE * 0.25, sideDrop + dy + 2, left - GLAZE_SIDE * 0.5, sideDrop + dy - 6);
-    g.lineTo(left - GLAZE_SIDE * 0.55, 8);
-    g.quadraticCurveTo(left - GLAZE_SIDE * 0.6, 0, left, 0);
+    if (drips.left) {
+      g.lineTo(left + 2, tl + sideDrop + dy - 6);
+      g.quadraticCurveTo(left - GLAZE_SIDE * 0.25, tl + sideDrop + dy + 2, left - GLAZE_SIDE * 0.5, tl + sideDrop + dy - 6);
+      g.lineTo(left - GLAZE_SIDE * 0.55, tl + 8);
+      g.quadraticCurveTo(left - GLAZE_SIDE * 0.6, tl, left, tl);
+    } else {
+      g.lineTo(left, edge(left) + dy);
+    }
     g.closePath();
   };
   // A pink shadow under the waves, then the glaze, then a shine along the top.
@@ -276,8 +317,10 @@ function makeGlaze(scene: Phaser.Scene, x: number, width: number): string {
   g.lineWidth = 2;
   g.lineCap = "round";
   g.beginPath();
-  g.moveTo(left + 6, 3.5);
-  g.lineTo(right - 6, 3.5);
+  const shineFrom = drips.left ? left + 6 : left;
+  const shineTo = drips.right ? right - 6 : right;
+  g.moveTo(shineFrom, top(shineFrom) + 3.5);
+  for (let px = shineFrom + 2; px <= shineTo; px += 2) g.lineTo(px, top(px) + 3.5);
   g.stroke();
   tex.refresh();
   return key;
@@ -295,19 +338,154 @@ export function drawGround(scene: Phaser.Scene, level: LevelData): Phaser.GameOb
       .rectangle(seg.x, VIEW.groundY, seg.width, depth, DOUGH_COLOR)
       .setOrigin(0, 0)
       .setDepth(DEPTH.ground);
-    const key = makeGlaze(scene, seg.x, seg.width);
-    const glaze = scene.add
-      .image(seg.x - GLAZE_SIDE, VIEW.groundY, key)
-      .setOrigin(0, 0)
-      .setDepth(DEPTH.ground);
-    // Each slab's glaze is drawn to measure; drop it with the slab so an
-    // editor redraw does not pile up textures.
-    glaze.once(Phaser.GameObjects.Events.DESTROY, () => {
-      if (scene.textures.exists(key)) scene.textures.remove(key);
-    });
-    out.push(body, glaze);
+    const hills = level.hills.filter((h) => h.x < seg.x + seg.width && h.x + h.width > seg.x);
+    const rise = (wx: number): number => {
+      const h = hills.find((hh) => wx >= hh.x && wx <= hh.x + hh.width);
+      return h ? hillsRise(h, wx) : 0;
+    };
+    const riseKey = hills.map((h) => `${h.x},${h.width},${h.height},${h.waves}`).join(";");
+    out.push(body);
+    // In pieces, since some phones cannot hold a texture much wider than
+    // 4096 pixels; only the slab's real ends drip.
+    const pieces = Math.ceil(seg.width / GLAZE_PIECE);
+    for (let i = 0; i < pieces; i++) {
+      const step = Math.ceil(seg.width / pieces);
+      const px = seg.x + step * i;
+      const pw = Math.min(step, seg.x + seg.width - px);
+      const key = makeGlaze(scene, px, pw, rise, riseKey, { left: i === 0, right: i === pieces - 1 });
+      const lift = scene.textures.get(key).getSourceImage().height - GLAZE_DEPTH;
+      const glaze = scene.add
+        .image(px - GLAZE_SIDE, VIEW.groundY - lift, key)
+        .setOrigin(0, 0)
+        .setDepth(DEPTH.ground);
+      // Each slab's glaze is drawn to measure; drop it with the slab so an
+      // editor redraw does not pile up textures.
+      glaze.once(Phaser.GameObjects.Events.DESTROY, () => {
+        if (scene.textures.exists(key)) scene.textures.remove(key);
+      });
+      out.push(glaze);
+    }
   }
+  for (const r of level.ramps) out.push(...drawRamp(scene, level, r));
+  for (const b of level.boosts) out.push(...drawBoost(scene, level, b));
   return out;
+}
+
+// ---- Ramps ---------------------------------------------------------------------
+//
+// A ramp is a wedge of dough whose top curves up to the lip, glazed like the
+// ground: the glaze follows the curve with the same even waves underneath and
+// drips down the lip's face.
+
+const RAMP_PAD = 4;
+
+function makeRamp(scene: Phaser.Scene, r: Ramp): string {
+  const key = `ramp:${r.width}x${r.height}`;
+  if (scene.textures.exists(key)) return key;
+  const w = r.width + GLAZE_SIDE;
+  const hgt = r.height + RAMP_PAD;
+  const tex = scene.textures.createCanvas(key, Math.ceil(w), Math.ceil(hgt));
+  if (!tex) return key;
+  const g = tex.getContext();
+  const top = (px: number): number => RAMP_PAD + r.height - r.height * (px / r.width) ** 2;
+  const foot = RAMP_PAD + r.height;
+
+  // Dough, with a darker lip face.
+  g.beginPath();
+  g.moveTo(0, foot);
+  for (let px = 0; px <= r.width; px += 2) g.lineTo(px, top(px));
+  g.lineTo(r.width, foot);
+  g.closePath();
+  g.fillStyle = css(DOUGH_COLOR);
+  g.fill();
+  g.fillStyle = "#c98a4a";
+  g.fillRect(r.width - 5, RAMP_PAD, 5, r.height);
+
+  // Glaze: along the curve, then down the face of the lip.
+  const band = (px: number): number => Math.min(foot, top(px) + 13 + 4 * Math.sin((px / GLAZE_WAVE) * Math.PI * 2));
+  const faceDrop = Math.min(r.height, 26);
+  const outline = (dy: number) => {
+    g.beginPath();
+    g.moveTo(0, foot);
+    for (let px = 0; px <= r.width; px += 2) g.lineTo(px, top(px));
+    g.quadraticCurveTo(r.width + GLAZE_SIDE * 0.6, RAMP_PAD, r.width + GLAZE_SIDE * 0.5, RAMP_PAD + 8);
+    g.lineTo(r.width + GLAZE_SIDE * 0.45, RAMP_PAD + faceDrop + dy - 6);
+    g.quadraticCurveTo(r.width + GLAZE_SIDE * 0.2, RAMP_PAD + faceDrop + dy + 2, r.width - 3, RAMP_PAD + faceDrop + dy - 6);
+    for (let px = r.width - 4; px >= 0; px -= 2) g.lineTo(px, band(px) + dy);
+    g.closePath();
+  };
+  outline(2.5);
+  g.fillStyle = GLAZE.shadow;
+  g.fill();
+  outline(0);
+  g.fillStyle = GLAZE.fill;
+  g.fill();
+  g.strokeStyle = GLAZE.shine;
+  g.lineWidth = 2;
+  g.lineCap = "round";
+  g.beginPath();
+  for (let px = 8; px <= r.width - 6; px += 2) {
+    if (px === 8) g.moveTo(px, top(px) + 3.5);
+    else g.lineTo(px, top(px) + 3.5);
+  }
+  g.stroke();
+  tex.refresh();
+  return key;
+}
+
+function drawRamp(scene: Phaser.Scene, level: LevelData, r: Ramp): Phaser.GameObjects.GameObject[] {
+  const out: Phaser.GameObjects.GameObject[] = [];
+  // Where the ramp overhangs a void, its dough runs down out of sight.
+  const depth = VIEW.height * 2;
+  let x = r.x;
+  const end = r.x + r.width;
+  while (x < end) {
+    const seg = level.ground.find((g) => x >= g.x && x < g.x + g.width);
+    if (seg) {
+      x = seg.x + seg.width;
+      continue;
+    }
+    const next = level.ground.find((g) => g.x > x);
+    const stop = Math.min(end, next ? next.x : end);
+    out.push(scene.add.rectangle(x, VIEW.groundY, stop - x, depth, DOUGH_COLOR).setOrigin(0, 0).setDepth(DEPTH.ground));
+    x = stop;
+  }
+  const key = makeRamp(scene, r);
+  out.push(
+    scene.add
+      .image(r.x, VIEW.groundY - r.height - RAMP_PAD, key)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.ground),
+  );
+  return out;
+}
+
+// ---- Speed pads ----------------------------------------------------------------
+//
+// A candy strip set into the glaze, with chevrons that run forwards.
+
+const CHEVRON = 26;
+
+function drawBoost(scene: Phaser.Scene, level: LevelData, b: Boost): Phaser.GameObjects.GameObject[] {
+  const tile = bake(scene, "boost-chevron", CHEVRON, 14, (g) => {
+    g.fillStyle(0xff4fa3);
+    g.fillRect(0, 0, CHEVRON, 14);
+    g.fillStyle(0xfff27e);
+    g.fillTriangle(4, 1, 13, 7, 4, 13);
+    g.fillStyle(0xff4fa3);
+    g.fillTriangle(4, 4, 9, 7, 4, 10);
+    g.fillStyle(0x7ec8ff);
+    g.fillTriangle(14, 1, 23, 7, 14, 13);
+    g.fillStyle(0xff4fa3);
+    g.fillTriangle(14, 4, 19, 7, 14, 10);
+  });
+  const y = (surfaceAt(level, b.x + b.width / 2) ?? VIEW.groundY) + 1;
+  const rim = scene.add.rectangle(b.x - 3, y - 9, b.width + 6, 18, 0xffffff).setOrigin(0, 0).setDepth(DEPTH.ground);
+  rim.setStrokeStyle(2, 0xff9cc8);
+  const strip = scene.add.tileSprite(b.x, y - 7, b.width, 14, tile).setOrigin(0, 0).setDepth(DEPTH.ground);
+  scene.tweens.add({ targets: strip, tilePositionX: -CHEVRON, duration: 260, repeat: -1 });
+  strip.once(Phaser.GameObjects.Events.DESTROY, () => scene.tweens.killTweensOf(strip));
+  return [rim, strip];
 }
 
 /**

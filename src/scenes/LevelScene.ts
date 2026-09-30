@@ -553,6 +553,16 @@ export class LevelScene extends Phaser.Scene {
         this.dust.explode(16, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         this.dustGlitter.explode(6, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
+      case "launch":
+        // Off a ramp's lip: a kick of dust from the edge.
+        this.pushOff(0.5);
+        this.dust.explode(12, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
+        break;
+      case "boost":
+        this.squash(1.3, 0.8);
+        this.dustGlitter.explode(14, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
+        this.popText("BOOST!", true);
+        break;
       case "grindStart":
         this.sausages[e.index].setAlpha(0.85);
         this.startWiggle(e.index);
@@ -646,7 +656,9 @@ export class LevelScene extends Phaser.Scene {
         : "";
     this.hud.setText(`Score ${s.score}${chain}`);
     this.hudLower.setText(`${air.trim() ? `${air.trim()}   ` : ""}Deaths ${this.deaths}`);
-    this.animateSpeedMeter(s.gear, deltaMs);
+    // A boost runs faster than the top gear, so the meter shows it full.
+    const boosted = s.boostPad >= 0 && !s.dead;
+    this.animateSpeedMeter(boosted ? TUNING.gears.length - 1 : s.gear, deltaMs);
     this.updateShades(s.gear, deltaMs);
     this.updateWiggles(x);
 
@@ -657,7 +669,7 @@ export class LevelScene extends Phaser.Scene {
     this.dustGlitter.frequency = rolling ? rate * 3 : -1;
     this.dust.setPosition(x - 4, y + DOUGHNUT.outerRadius - 2);
     this.dustGlitter.setPosition(x - 4, y + DOUGHNUT.outerRadius - 2);
-    this.trail.frequency = this.mode === "running" && s.gear >= 2 ? 120 / s.gear : -1;
+    this.trail.frequency = this.mode !== "running" ? -1 : boosted ? 10 : s.gear >= 2 ? 120 / s.gear : -1;
     this.trail.setPosition(x - 10, y);
 
     this.debug.clear();

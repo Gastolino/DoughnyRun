@@ -9,13 +9,38 @@ import { parseLevelFile } from "./levels/format";
 
 const KEY = "doughnyrun.v1";
 
-interface Saved {
+export interface Saved {
+  /** Which campaign numbering the ids follow; see migrate(). */
+  campaign?: number;
   completed: string[];
   best: Record<string, number>;
   custom: LevelFile[];
 }
 
-let memory: Saved = { completed: [], best: {}, custom: [] };
+let memory: Saved = { campaign: 3, completed: [], best: {}, custom: [] };
+
+/**
+ * Levels added between existing ones renumber the ones after them. The first
+ * campaign had two levels; the second put Sugar Rush between them, and the
+ * third put Jelly Hills after it, so Glaze Heights went from 1-2 to 1-3 and
+ * then to 1-4. Progress saved under an old numbering follows each level to
+ * its new id.
+ */
+export const CAMPAIGN_VERSION = 3;
+const RENAMES: Record<number, Record<string, string>> = {
+  1: { "1-2": "1-4" },
+  2: { "1-3": "1-4" },
+};
+
+export function migrate(data: Saved): Saved {
+  const version = data.campaign ?? 1;
+  if (version >= CAMPAIGN_VERSION) return data;
+  const map = RENAMES[version] ?? {};
+  const rename = (id: string): string => map[id] ?? id;
+  const best: Record<string, number> = {};
+  for (const [id, score] of Object.entries(data.best)) best[rename(id)] = score;
+  return { ...data, campaign: CAMPAIGN_VERSION, completed: data.completed.map(rename), best };
+}
 
 function load(): Saved {
   try {
@@ -30,11 +55,12 @@ function load(): Saved {
           // A saved level that no longer passes the checks is dropped.
         }
       }
-      memory = {
+      memory = migrate({
+        campaign: typeof data.campaign === "number" ? data.campaign : 1,
         completed: Array.isArray(data.completed) ? data.completed.filter((c) => typeof c === "string") : [],
         best: typeof data.best === "object" && data.best ? data.best : {},
         custom,
-      };
+      });
     }
   } catch {
     // Storage unavailable: keep what is in memory.
@@ -51,10 +77,14 @@ function save(data: Saved): void {
   }
 }
 
-/** A campaign level is open once the one before it has been finished. */
+/**
+ * A campaign level is open once the one before it has been finished, and
+ * stays open once finished itself, even when a new level is added before it.
+ */
 export function isUnlocked(index: number): boolean {
   if (index <= 0) return true;
-  return load().completed.includes(CAMPAIGN[index - 1].id);
+  const done = load().completed;
+  return done.includes(CAMPAIGN[index - 1].id) || done.includes(CAMPAIGN[index].id);
 }
 
 export function bestScore(id: string): number {
