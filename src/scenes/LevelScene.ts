@@ -20,7 +20,7 @@ import { READABLE_FONT, TITLE_FONT } from "./fonts";
 import { RAINBOW_SCALE, showRainbow } from "./rainbowText";
 import { DentureChaser } from "./boss";
 import { addSkySprinkles, DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
-import { COLORS, SPRINKLE_COLORS } from "./palette";
+import { COLORS, RAINBOW_SPRINKLES, SPRINKLE_COLORS } from "./palette";
 
 /** What the level scene is asked to play, and where it goes afterwards. */
 export interface PlayRequest {
@@ -105,6 +105,8 @@ export class LevelScene extends Phaser.Scene {
   private boss: DentureChaser | null = null;
   // The sizzle of each sausage passing through the hole, by index.
   private sizzles = new Map<number, () => void>();
+  private fluff!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private wasHovering = false;
   private deaths = 0;
   private showHitboxes = false;
   private demoInputs: DecisionInput[] | null = null;
@@ -189,9 +191,22 @@ export class LevelScene extends Phaser.Scene {
     this.glassHop = { v: 0 };
     this.glassSpin = false;
     this.wiggles = new Map();
+    const sprinkleColors = topping === "rainbow" ? RAINBOW_SPRINKLES : SPRINKLE_COLORS;
     this.sprinkles = Array.from({ length: SPRINKLES }, (_, i) =>
-      this.add.image(0, 0, "sprinkle").setTint(SPRINKLE_COLORS[i % SPRINKLE_COLORS.length]),
+      this.add.image(0, 0, "sprinkle").setTint(sprinkleColors[i % sprinkleColors.length]),
     );
+    // Wisps of marshmallow drifting off the doughnut while it floats.
+    this.fluff = this.add
+      .particles(0, 0, "glow", {
+        speedX: { min: -60, max: -10 },
+        speedY: { min: 10, max: 50 },
+        lifespan: 600,
+        scale: { start: 0.5, end: 0.1 },
+        alpha: { start: 0.8, end: 0 },
+        tint: [0xffffff, 0xf0e2ff, 0xffd6ec],
+        frequency: -1,
+      })
+      .setDepth(DEPTH.trail);
     this.debug = this.add.graphics().setDepth(DEPTH.fx);
     this.eaten = null;
     this.victory = null;
@@ -730,8 +745,18 @@ export class LevelScene extends Phaser.Scene {
       this.options.airJumps > 0
         ? `   Air jump ${"●".repeat(s.airJumpsLeft)}${"○".repeat(this.options.airJumps - s.airJumpsLeft)}`
         : "";
+    const maxFuel = this.options.hover ?? 0;
+    const cells = maxFuel > 0 ? Math.ceil((s.hoverFuel / maxFuel) * 5) : 0;
+    const float = maxFuel > 0 ? `   Float ${"▰".repeat(cells)}${"▱".repeat(5 - cells)}` : "";
     this.hud.setText(`Score ${s.score}${chain}`);
-    this.hudLower.setText(`${air.trim() ? `${air.trim()}   ` : ""}Deaths ${this.deaths}`);
+    const powers = `${air}${float}`.trim();
+    this.hudLower.setText(`${powers ? `${powers}   ` : ""}Deaths ${this.deaths}`);
+    // Floating: fluff trails off, and a soft whoosh starts it.
+    const hovering = s.hovering && this.mode === "running";
+    this.fluff.frequency = hovering ? 40 : -1;
+    this.fluff.setPosition(x - 10, y + DOUGHNUT.outerRadius - 10);
+    if (hovering && !this.wasHovering) sound.float();
+    this.wasHovering = hovering;
     // A boost runs faster than the top gear, so the meter shows it full.
     const boosted = s.boostPad >= 0 && !s.dead;
     this.animateSpeedMeter(boosted ? TUNING.gears.length - 1 : s.gear, deltaMs);

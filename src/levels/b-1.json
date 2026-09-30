@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "Sprinkle Summit",
+  "length": 9000,
+  "topping": "rainbow",
+  "elements": [
+    { "type": "sausage", "x": 500, "y": 412, "length": 160 },
+    { "type": "gap", "x": 1200, "width": 1000 },
+    { "type": "sausage", "x": 1350, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 1630, "y": 110, "length": 40 },
+    { "type": "sausage", "x": 1910, "y": -20, "length": 40 },
+    { "type": "sausage", "x": 2700, "y": 412, "length": 200 },
+    { "type": "gap", "x": 3300, "width": 1100 },
+    { "type": "sausage", "x": 3450, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 3730, "y": 100, "length": 40 },
+    { "type": "sausage", "x": 4010, "y": -40, "length": 40 },
+    { "type": "hills", "x": 4700, "width": 1200, "height": 60, "waves": 2 },
+    { "type": "sausage", "x": 4980, "y": 352, "length": 40 },
+    { "type": "gap", "x": 6100, "width": 1000 },
+    { "type": "sausage", "x": 6250, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 6530, "y": 110, "length": 40 },
+    { "type": "sausage", "x": 6810, "y": -20, "length": 40 },
+    { "type": "sausage", "x": 7700, "y": 412, "length": 200 }
+  ]
+}

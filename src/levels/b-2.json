@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "name": "Marshmallow Drift",
+  "length": 7600,
+  "topping": "marshmallow",
+  "elements": [
+    { "type": "sausage", "x": 500, "y": 412, "length": 160 },
+    { "type": "sausage", "x": 850, "y": 412, "length": 160 },
+    { "type": "gap", "x": 1400, "width": 1600 },
+    { "type": "sausage", "x": 1550, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 1830, "y": 110, "length": 40 },
+    { "type": "sausage", "x": 2110, "y": -20, "length": 40 },
+    { "type": "sausage", "x": 2620, "y": 260, "length": 100 },
+    { "type": "hills", "x": 3500, "width": 1200, "height": 60, "waves": 2 },
+    { "type": "sausage", "x": 3780, "y": 352, "length": 40 },
+    { "type": "gap", "x": 5000, "width": 1600 },
+    { "type": "sausage", "x": 5150, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 5430, "y": 110, "length": 40 },
+    { "type": "sausage", "x": 5710, "y": -20, "length": 40 },
+    { "type": "sausage", "x": 6220, "y": 260, "length": 100 }
+  ]
+}

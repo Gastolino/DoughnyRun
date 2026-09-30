@@ -223,6 +223,11 @@ export const sound = {
     [0, 2, 4, 5].forEach((k, i) => tone({ type: "triangle", from: note(k, 392), duration: i === 3 ? 0.6 : 0.16, volume: 0.3, delay: i * 0.13 }));
     tone({ type: "sine", from: note(5, 196), duration: 0.8, volume: 0.2, delay: 0.39 });
   },
+  /** Floating on marshmallow: a soft, airy whoosh. */
+  float(): void {
+    hiss({ filter: "bandpass", from: 900, to: 500, q: 0.7, duration: 0.7, volume: 0.18 });
+    tone({ type: "sine", from: 520, to: 440, duration: 0.5, volume: 0.08 });
+  },
   click(): void {
     tone({ type: "triangle", from: 900, duration: 0.05, volume: 0.15 });
   },

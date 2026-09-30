@@ -23,6 +23,9 @@ const STOPS: readonly { x: number; y: number }[] = [
   { x: 490, y: 405 },
   { x: 670, y: 300 },
   { x: 850, y: 205 },
+  // The bonus stops, back along the top of the map past the boss.
+  { x: 650, y: 175 },
+  { x: 450, y: 195 },
 ];
 
 const MARKER = 0.62;
@@ -31,6 +34,8 @@ const MARKER = 0.62;
 const TOPPING_GLAZE: Record<string, { fill: number; rim: number; ink: string }> = {
   plain: { fill: 0xff9cc8, rim: 0xfff6fa, ink: "#c2477e" },
   glaze: { fill: 0x7a4a2a, rim: 0xc98a4a, ink: "#3b2213" },
+  rainbow: { fill: 0xfff3e6, rim: 0xffd23f, ink: "#e0588f" },
+  marshmallow: { fill: 0xd9c2ff, rim: 0xffffff, ink: "#7a55c8" },
 };
 
 export class MapScene extends Phaser.Scene {
@@ -192,7 +197,8 @@ export class MapScene extends Phaser.Scene {
     const best = bestScore(c.id);
     const t = medalTargets(c.level);
     const verb = window.matchMedia("(pointer: coarse)").matches ? "Tap again" : "Press Enter";
-    const lines = [`${c.id}  ${c.level.name}${c.level.chaser ? "  (boss)" : ""}`];
+    const kind = c.level.chaser ? "  (boss)" : c.id.startsWith("B-") ? "  (bonus)" : "";
+    const lines = [`${c.id}  ${c.level.name}${kind}`];
     if (!isUnlocked(i)) lines.push(`Finish ${CAMPAIGN[i - 1].id} to open`);
     else {
       lines.push(`${best ? `Best ${best}` : "Not finished yet"}  ·  Silver ${t.silver}  ·  Gold ${t.gold}  ·  ${verb} to play`);

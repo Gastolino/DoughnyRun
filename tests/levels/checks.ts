@@ -7,24 +7,26 @@ import { runnerOptionsFor, TOPPINGS } from "../../src/logic/toppings";
 
 // Every campaign level ships only if the solver can finish it with its own
 // topping. A skipped sausage ends the run, so a finish threads every one. A
-// level with a new topping must also be impossible without it, so that the
-// unlock matters.
+// level that brings in a new topping must also be impossible with the one
+// before it, so that the unlock matters.
 //
 // Each level has its own test file, so that the levels' searches run side by
 // side.
 
 export function checkLevel(id: string): void {
-  const entry = CAMPAIGN.find((c) => c.id === id);
-  if (!entry) throw new Error(`No campaign level ${id}`);
-  const { level } = entry;
+  const index = CAMPAIGN.findIndex((c) => c.id === id);
+  if (index < 0) throw new Error(`No campaign level ${id}`);
+  const { level } = CAMPAIGN[index];
+  const before = index > 0 ? CAMPAIGN[index - 1].level.topping : null;
   const options = runnerOptionsFor(level.topping);
 
   describe(`level ${id}`, () => {
     let solved: SolveResult | undefined;
     const solve = (): SolveResult => (solved ??= solveLevel(level, options));
 
-    // A boss's chase makes the search much larger.
-    it("can be cleared with its topping", { timeout: level.chaser ? 240_000 : 60_000 }, () => {
+    // A boss's chase, or long flights with many air jumps, make the search
+    // much larger.
+    it("can be cleared with its topping", { timeout: 240_000 }, () => {
       const result = solve();
       expect(result.solvable, `stuck near x=${Math.round(result.furthestX)}`).toBe(true);
     });
@@ -40,12 +42,12 @@ export function checkLevel(id: string): void {
       expect(s.finished).toBe(true);
     });
 
-    if (TOPPINGS[level.topping].airJumps > 0) {
-      it("cannot be cleared without its topping", () => {
+    if (before !== null && before !== level.topping) {
+      it(`cannot be cleared with the topping before it, ${TOPPINGS[before].name}`, { timeout: 240_000 }, () => {
         // Without a boss's chase, which only adds ways to lose, so that the
         // search stays small.
         const unchased = { ...level, chaser: undefined };
-        expect(solveLevel(unchased, runnerOptionsFor("plain")).solvable).toBe(false);
+        expect(solveLevel(unchased, runnerOptionsFor(before)).solvable).toBe(false);
       });
     }
   });

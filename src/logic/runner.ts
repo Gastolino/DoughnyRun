@@ -15,6 +15,8 @@ export interface RunnerOptions {
    * into a sausage (not a fall, a cliff or a skipped sausage). On by default.
    */
   shield?: boolean;
+  /** Seconds of floating per flight, with the marshmallow topping. */
+  hover?: number;
 }
 
 export const PLAIN: RunnerOptions = { airJumps: 0 };
@@ -66,6 +68,10 @@ export interface RunnerState {
   boostPad: number;
   /** Front teeth of the boss's dentures, or -Infinity on a level without them. */
   chaserX: number;
+  /** Seconds of float left in this flight. */
+  hoverFuel: number;
+  /** Floating on this step. */
+  hovering: boolean;
   dead: DeathCause | null;
   finished: boolean;
 }
@@ -126,6 +132,8 @@ export function createRunner(level: LevelData, options: RunnerOptions = PLAIN): 
     smashed: [],
     boostPad: -1,
     chaserX: level.chaser ? x + 80 - level.chaser.gap : -Infinity,
+    hoverFuel: options.hover ?? 0,
+    hovering: false,
     dead: null,
     finished: false,
   };
@@ -201,6 +209,14 @@ export function stepRunner(
   const hanging = s.canCutJump && Math.abs(s.vy) < TUNING.apexHangSpeed;
   const gravity = hanging ? TUNING.gravity * TUNING.apexHangGravityFactor : TUNING.gravity;
   s.vy = Math.min(s.vy + gravity * dt, TUNING.maxFallSpeed);
+  // Holding the button while falling floats, as long as there is fuel.
+  // Letting go ends the float until the doughnut lands again.
+  if (s.hovering && !input.held) s.hoverFuel = 0;
+  s.hovering = !s.grounded && input.held && s.vy > 0 && s.hoverFuel > 0;
+  if (s.hovering) {
+    s.vy = Math.min(s.vy, TUNING.hoverFallSpeed);
+    s.hoverFuel = Math.max(0, s.hoverFuel - dt);
+  }
   s.y += s.vy * dt;
   const bottom = s.y + R;
 
@@ -231,6 +247,7 @@ export function stepRunner(
         s.airGrinds = 0;
         s.canCutJump = false;
         s.airJumpsLeft = options.airJumps;
+        s.hoverFuel = options.hover ?? 0;
       }
     }
   }

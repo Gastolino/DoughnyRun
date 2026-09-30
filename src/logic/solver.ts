@@ -185,7 +185,8 @@ export class NumberMap {
 
 /**
  * The rarer parts of a state, present only mid-grind, over a sausage already
- * threaded, or after the free crash, as text. A grind in progress will
+ * threaded, after the free crash or in a flight that can still float, as
+ * text. A grind in progress will
  * change the speed when it ends.
  */
 function extraKey(s: RunnerState): string | null {
@@ -194,9 +195,31 @@ function extraKey(s: RunnerState): string | null {
   // Only sausages not yet left behind matter to what happens next.
   const pending = s.threaded.filter((i) => i >= s.nextSausage);
   const smashed = s.smashed.filter((i) => i >= s.nextSausage);
-  if (s.grinds.length === 0 && smashed.length === 0 && pending.length === 0) return null;
+  // Float left in a flight with the marshmallow topping.
+  const fuel = !s.grounded && s.hoverFuel > 0 ? Math.round(s.hoverFuel * 20) : "";
+  if (s.grinds.length === 0 && smashed.length === 0 && pending.length === 0 && fuel === "") return null;
   const grinds = s.grinds.map((g) => `${g.index}:${Math.round((g.offsetSum / g.steps) * 20)}`).join(";");
-  return `${grinds}|${smashed.join(";")}|${pending.join(";")}`;
+  return `${grinds}|${smashed.join(";")}|${pending.join(";")}|${fuel}`;
+}
+
+/**
+ * The rarer parts of a state are text; they are folded into a 53-bit number
+ * with the rest of the key, so that rare states live in the same kind of
+ * table as the common ones. Two different states could share a number, which
+ * would cut one of them from the search; with 53 bits that is vanishingly
+ * unlikely, and a route the solver does find is always replayed and checked.
+ */
+function rareKey(key: number, extra: string): number {
+  let h1 = 0x811c9dc5 ^ (key >>> 0);
+  let h2 = 0x9e3779b9 ^ Math.floor(key / 4294967296);
+  for (let i = 0; i < extra.length; i++) {
+    const c = extra.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ c, 0x5bd1e995);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 15), 0x2c1b3c6d);
+  h2 = Math.imul(h2 ^ (h2 >>> 13), 0x297a2d39);
+  return (h1 >>> 0) * 2097152 + ((h2 >>> 0) & 0x1fffff);
 }
 
 /**
@@ -207,34 +230,36 @@ function extraKey(s: RunnerState): string | null {
  */
 class Visited {
   private seen = new NumberSet();
-  private seenRare = new Set<string>();
+  private seenRare = new NumberSet();
   private bestGap = new NumberMap();
-  private bestGapRare = new Map<string, number>();
+  private bestGapRare = new NumberMap();
 
   /** Records a state; false when an identical or better one was already seen. */
   firstVisit(state: RunnerState, held: boolean): boolean {
     const key = numericKey(state, held);
     const extra = extraKey(state);
+    const k = extra === null ? key : rareKey(key, extra);
     if (Number.isFinite(state.chaserX)) {
+      const table = extra === null ? this.bestGap : this.bestGapRare;
       const gap = state.x - state.chaserX;
-      const full = extra === null ? null : `${key}|${extra}`;
-      const best = full === null ? this.bestGap.get(key) : this.bestGapRare.get(full);
+      const best = table.get(k);
       if (best !== undefined && best >= gap - 1) return false;
-      if (full === null) this.bestGap.set(key, gap);
-      else this.bestGapRare.set(full, gap);
+      table.set(k, gap);
       return true;
     }
-    if (extra === null) return this.seen.add(key);
-    const full = `${key}|${extra}`;
-    if (this.seenRare.has(full)) return false;
-    this.seenRare.add(full);
-    return true;
+    return (extra === null ? this.seen : this.seenRare).add(k);
   }
 }
 
 /** A press that cannot change the outcome, which the searches skip. */
 function pointlessPress(level: LevelData, s: RunnerState, options: RunnerOptions): boolean {
-  return (!s.grounded && s.coyote <= 0 && s.airJumpsLeft === 0) || jumpIsIdle(level, s, options);
+  const canAct = s.grounded || s.coyote > 0 || s.airJumpsLeft > 0 || s.hoverFuel > 0;
+  return !canAct || jumpIsIdle(level, s, options);
+}
+
+/** Holding the button still matters: it can cut the jump or keep a float going. */
+function holding(input: boolean, s: RunnerState): boolean {
+  return input && (s.canCutJump || (!s.grounded && s.hoverFuel > 0));
 }
 
 /** Stretches of a level where a jump could change something. */
@@ -298,7 +323,9 @@ function airtimeBound(airJumps: number): number {
 function jumpIsIdle(level: LevelData, s: RunnerState, options: RunnerOptions): boolean {
   if (!s.grounded || slopeAt(level, s.x) !== 0) return false;
   const lo = s.x - DOUGHNUT.halfWidth - 1;
-  const hi = s.x + speedOf(s) * airtimeBound(options.airJumps) + DOUGHNUT.halfWidth + 1;
+  // A float can stretch a flight by its fuel and a little more.
+  const airtime = airtimeBound(options.airJumps) + (options.hover ?? 0) * 1.5;
+  const hi = s.x + speedOf(s) * airtime + DOUGHNUT.halfWidth + 1;
   const f = featuresOf(level);
   for (let i = 0; i < f.length; i += 2) {
     if (f[i] > hi) break;
@@ -328,7 +355,7 @@ export function solveLevel(level: LevelData, options: RunnerOptions = PLAIN): So
       }
       if (state.dead) continue;
 
-      const child: Node = { state, held: input && state.canCutJump, input: decision, parent: node };
+      const child: Node = { state, held: holding(input, state), input: decision, parent: node };
       furthestX = Math.max(furthestX, state.x);
       if (state.finished) {
         return { solvable: true, furthestX, inputs: trace(child) };

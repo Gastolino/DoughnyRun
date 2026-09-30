@@ -82,7 +82,8 @@ export class BootScene extends Phaser.Scene {
 
     // Icing on the near face, inset from the dough.
     ellipsePair(cx + 2, cy, ART_HALF_WIDTH - 6, DOUGHNUT.outerRadius - 5, cx + 1, ART_HOLE_HALF_WIDTH + 3, DOUGHNUT.holeRadius + 4);
-    ctx.fillStyle = css(topping === "glaze" ? COLORS.glaze : COLORS.icing);
+    const icing = { plain: COLORS.icing, glaze: COLORS.glaze, rainbow: COLORS.vanilla, marshmallow: COLORS.marshmallow }[topping];
+    ctx.fillStyle = css(icing);
     ctx.fill("evenodd");
     if (topping === "glaze") {
       // A glossy streak along the upper left of the glaze.

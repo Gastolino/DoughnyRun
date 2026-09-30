@@ -71,6 +71,12 @@ next one, and a new topping comes with the level that first needs it.
 | 1-3   | Jelly Hills     | Pink icing: one jump                         | Rolling hills  |
 | 1-4   | Glaze Heights   | Chocolate glaze: press again in the air to double jump | Double jump |
 | 1-5   | Chomp Chase     | Chocolate glaze                              | The boss       |
+| B-1   | Sprinkle Summit | Rainbow sprinkles: tap twice more in the air to triple jump | Triple jump |
+| B-2   | Marshmallow Drift | Marshmallow fluff: triple jump, and hold while falling to float down | Float |
+
+The bonus levels open once the boss is beaten. Marshmallow's float lasts up
+to a second per flight, at no more than 70 px/s downwards; letting go ends it
+until the doughnut lands.
 
 In top gear the doughnut wears its sunglasses, and they absorb one crash
 into a sausage: the doughnut smashes through it and drops to first gear.
@@ -112,8 +118,8 @@ Levels are JSON files in `src/levels`, listed in order in
 `src/levels/format.ts`: a name, a length, a topping and a list of elements,
 each with a `type`: `gap`, `sausage`, `ramp`, `boost` or `hills`. The tests check
 every listed level with the solver: it must be finishable with its topping,
-which means threading every sausage, and a level with a new topping must be
-impossible without it. Each level has its own test file in `tests/levels`.
+which means threading every sausage, and a level that brings in a new
+topping must be impossible with the topping before it. Each level has its own test file in `tests/levels`.
 
 ## Level editor
 
@@ -136,7 +142,7 @@ Open it from the menu, or add `#editor` to the address. Tools:
 
 Positions snap to 10 px (hold Shift for 1 px), and the bottom bar takes exact
 numbers. Dashed guides show how high the hole reaches when rolling, at the
-top of one jump and at the top of a double jump. **Check** asks the solver
+top of one jump, a double jump and a triple jump. **Check** asks the solver
 whether the level can be finished, threading every sausage, and marks where
 it got stuck with a red line. **Play** and
 **Watch solver** test the level, and **Save** adds it to Your levels in the

@@ -13,6 +13,8 @@ export interface Reach {
   single: number;
   /** Highest hole centre of a held jump with an air jump at its top. */
   double: number;
+  /** The same with two air jumps, each at the top of the one before. */
+  triple: number;
 }
 
 const FLAT: LevelData = {
@@ -29,11 +31,11 @@ const FLAT: LevelData = {
 function highest(airJumps: number): number {
   const s = createRunner(FLAT, { airJumps });
   let top = s.y;
-  let usedAir = false;
-  for (let i = 0; i < 1200; i++) {
-    // Press again once the first jump has stopped rising.
-    const airPress = airJumps > 0 && !usedAir && i > 1 && !s.grounded && s.vy >= 0;
-    if (airPress) usedAir = true;
+  let usedAir = 0;
+  for (let i = 0; i < 2400; i++) {
+    // Press again each time a jump has stopped rising.
+    const airPress = usedAir < airJumps && i > 1 && !s.grounded && s.vy >= 0;
+    if (airPress) usedAir += 1;
     stepRunner(s, { held: true, pressed: i === 0 || airPress }, FLAT, { airJumps });
     top = Math.min(top, s.y);
     if (i > 2 && s.grounded) break;
@@ -44,6 +46,6 @@ function highest(airJumps: number): number {
 let cached: Reach | null = null;
 
 export function reachHeights(): Reach {
-  cached ??= { run: VIEW.groundY - DOUGHNUT.outerRadius, single: highest(0), double: highest(1) };
+  cached ??= { run: VIEW.groundY - DOUGHNUT.outerRadius, single: highest(0), double: highest(1), triple: highest(2) };
   return cached;
 }

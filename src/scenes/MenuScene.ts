@@ -95,7 +95,7 @@ export class MenuScene extends Phaser.Scene {
           { class: "level-meta" },
           finished
             ? `${finished} of ${CAMPAIGN.length} finished · ${count("gold")} gold, ${count("silver")} silver, ${count("bronze")} bronze`
-            : `${CAMPAIGN.filter((c) => !c.level.chaser).length} levels and a boss`,
+            : `${CAMPAIGN.filter((c) => !c.level.chaser && !c.id.startsWith("B-")).length} levels, a boss and ${CAMPAIGN.filter((c) => c.id.startsWith("B-")).length} bonus levels`,
         ),
       ),
     );

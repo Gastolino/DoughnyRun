@@ -26,6 +26,9 @@ export const TUNING = {
   // raised sausages.
   apexHangSpeed: 300,
   apexHangGravityFactor: 0.35,
+  // Floating with the marshmallow topping: the fastest the doughnut falls
+  // while the button is held.
+  hoverFallSpeed: 70,
   coyoteTime: 0.1,
   jumpBufferTime: 0.12,
   fixedStep: 1 / 120,

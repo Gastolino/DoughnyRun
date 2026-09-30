@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRunner, gradeFor, speedOf, stepRunner } from "../src/logic/runner";
 import type { RunnerEvent, RunnerState } from "../src/logic/runner";
 import { solveLevel, STEPS_PER_DECISION } from "../src/logic/solver";
+import { runnerOptionsFor, TOPPINGS } from "../src/logic/toppings";
 import { CHASE, DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
 import type { LevelData, Sausage } from "../src/logic/types";
 
@@ -284,5 +285,57 @@ describe("the boss chase", () => {
     expect(end).toMatchObject({ grade: "perfect" });
     expect(before).toBeCloseTo(300, 5);
     expect(s.x - s.chaserX).toBeCloseTo(300 - CHASE.shove.perfect, 5);
+  });
+});
+
+describe("new toppings", () => {
+  it("give rainbow sprinkles two jumps in the air", () => {
+    const options = runnerOptionsFor("rainbow");
+    const s = createRunner(flat, options);
+    const types: string[] = [];
+    for (let i = 0; i < 240; i++) {
+      // A tap, and two more taps in the air before it lands.
+      const pressed = i === 0 || i === 12 || i === 24;
+      types.push(...stepRunner(s, { held: false, pressed }, flat, options).map((e) => e.type));
+      if (s.grounded && i > 2) break;
+    }
+    expect(types.filter((t) => t === "airJump")).toHaveLength(2);
+  });
+
+  it("let marshmallow float down slowly while held, until the fuel runs out", () => {
+    const options = runnerOptionsFor("marshmallow");
+    const s = createRunner(flat, options);
+    let floated = 0;
+    let fastest = 0;
+    for (let i = 0; i < 1200 && !(s.grounded && i > 2); i++) {
+      stepRunner(s, { held: true, pressed: i === 0 }, flat, options);
+      if (s.hovering) {
+        floated += TUNING.fixedStep;
+        fastest = Math.max(fastest, s.vy);
+      }
+    }
+    expect(fastest).toBeLessThanOrEqual(TUNING.hoverFallSpeed);
+    expect(floated).toBeCloseTo(TOPPINGS.marshmallow.hover, 1);
+    // Landing fills the fuel again.
+    expect(s.hoverFuel).toBe(TOPPINGS.marshmallow.hover);
+  });
+
+  it("ends a float for the rest of the flight when the button is let go", () => {
+    const options = runnerOptionsFor("marshmallow");
+    const s = createRunner(flat, options);
+    let i = 0;
+    for (; i < 400 && !s.hovering; i++) stepRunner(s, { held: true, pressed: i === 0 }, flat, options);
+    for (let k = 0; k < 10; k++, i++) stepRunner(s, { held: true, pressed: false }, flat, options);
+    stepRunner(s, { held: false, pressed: false }, flat, options);
+    stepRunner(s, { held: true, pressed: true }, flat, options);
+    expect(s.hoverFuel).toBe(0);
+    expect(s.hovering).toBe(false);
+  });
+
+  it("keeps a held float from mattering for toppings without one", () => {
+    const s = createRunner(flat);
+    for (let i = 0; i < 60; i++) stepRunner(s, { held: true, pressed: i === 0 }, flat);
+    expect(s.hovering).toBe(false);
+    expect(s.hoverFuel).toBe(0);
   });
 });

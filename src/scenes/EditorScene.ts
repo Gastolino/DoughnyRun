@@ -179,8 +179,9 @@ export class EditorScene extends Phaser.Scene {
       guide("Rolling height"),
       guide("Top of one jump"),
       guide("Top of a double jump (glaze)"),
+      guide("Top of a triple jump (rainbow)"),
     ];
-    this.labels.forEach((l, i) => l.setData("y", [reach.run, reach.single, reach.double][i]));
+    this.labels.forEach((l, i) => l.setData("y", [reach.run, reach.single, reach.double, reach.triple][i]));
 
     this.applyZoom(0);
     this.cameras.main.setScroll(-100, -40);
@@ -322,6 +323,7 @@ export class EditorScene extends Phaser.Scene {
       [reach.run, 0x3c8c5a],
       [reach.single, 0x2f6fbf],
       [reach.double, 0x8a3fbf],
+      [reach.triple, 0xd0428a],
     ];
     for (const [y, color] of lines) {
       g.lineStyle(2, color, 0.55);
