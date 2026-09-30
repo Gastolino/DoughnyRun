@@ -105,8 +105,8 @@ page is hidden, and asks to be turned sideways in portrait.
 ## Look and feel
 
 Big titles, single words and scores use Bubble Toy Solid Bold by ana & yvy
-(anayvy.shop), bundled in `src/assets/fonts` and trimmed to the characters
-the game uses. Sentences use Comic Neue Bold (from `@fontsource/comic-neue`,
+(anayvy.shop), under a licence the project owner bought. It is bundled in
+`src/assets/fonts` and trimmed to the characters the game uses. Sentences use Comic Neue Bold (from `@fontsource/comic-neue`,
 under the SIL Open Font License), because Bubble Toy is hard to read in a
 sentence.
 Banners and call-outs use rainbow letters with a rainbow outline and land
