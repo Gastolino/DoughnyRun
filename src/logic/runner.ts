@@ -20,6 +20,12 @@ export interface RunnerOptions {
    * The editor uses it to ask whether every sausage can be threaded in one run.
    */
   mustThread?: readonly number[];
+  /**
+   * In top gear the doughnut wears its sunglasses, and they absorb one crash.
+   * On by default; level checks turn it off to prove sausages cannot be
+   * avoided without spending it.
+   */
+  shield?: boolean;
 }
 
 export const PLAIN: RunnerOptions = { airJumps: 0 };
@@ -60,6 +66,8 @@ export interface RunnerState {
   chain: number;
   /** Grinds finished since the doughnut last touched the ground. */
   airGrinds: number;
+  /** Sausages the doughnut smashed through on its free crash. */
+  smashed: number[];
   dead: DeathCause | null;
   finished: boolean;
 }
@@ -83,6 +91,8 @@ export type RunnerEvent =
   | ({ type: "grindEnd" } & GrindResult)
   | { type: "skip"; index: number }
   | { type: "die"; cause: DeathCause }
+  /** The sunglasses absorbed a crash; the doughnut carries on in first gear. */
+  | { type: "save"; cause: DeathCause; respawned: boolean; index?: number }
   | { type: "finish" };
 
 const R = DOUGHNUT.outerRadius;
@@ -108,6 +118,7 @@ export function createRunner(level: LevelData, options: RunnerOptions = PLAIN): 
     score: 0,
     chain: 0,
     airGrinds: 0,
+    smashed: [],
     dead: null,
     finished: false,
   };
@@ -122,6 +133,7 @@ export function cloneRunner(s: RunnerState): RunnerState {
     ...s,
     grinds: s.grinds.map((g) => ({ ...g })),
     threaded: [...s.threaded],
+    smashed: [...s.smashed],
   };
 }
 
@@ -175,6 +187,7 @@ export function stepRunner(
     if (prevBottom > VIEW.groundY + SURFACE_TOLERANCE) {
       // Already below the surface when the ground arrived: the doughnut has
       // run into the side of a cliff.
+      if (shielded(s, options)) return rescue(s, level, options, "wall", events);
       return die(s, "wall", events);
     }
     if (s.vy >= 0 && bottom >= VIEW.groundY) {
@@ -190,16 +203,27 @@ export function stepRunner(
     s.grounded = false;
   }
 
-  if (s.y - R > VIEW.height) return die(s, "fell", events);
+  if (s.y - R > VIEW.height) {
+    if (shielded(s, options)) return rescue(s, level, options, "fell", events);
+    return die(s, "fell", events);
+  }
 
   const ring = ringAt(s.x, s.y);
   for (let i = s.nextSausage; i < level.sausages.length; i++) {
     const sausage = level.sausages[i];
     if (sausage.x > ring.cx + ring.halfWidth) break;
+    if (s.smashed.includes(i)) continue;
     const result = checkSausage(ring, sausage);
     const grind = s.grinds.find((g) => g.index === i);
     if (result === "hit" || (result === "threaded" && options.solidSausage === i)) {
-      return die(s, "sausage", events);
+      if (!shielded(s, options)) return die(s, "sausage", events);
+      // The sunglasses take the hit: the doughnut smashes through this sausage.
+      s.smashed.push(i);
+      s.grinds = s.grinds.filter((g) => g.index !== i);
+      s.gear = 0;
+      s.chain = 0;
+      events.push({ type: "save", cause: "sausage", respawned: false, index: i });
+      continue;
     }
     if (result === "threaded") {
       if (grind) {
@@ -207,7 +231,7 @@ export function stepRunner(
         grind.steps += 1;
       } else {
         s.grinds.push({ index: i, offsetSum: centreOffset(ring, sausage), steps: 1 });
-        s.threaded.push(i);
+        if (!s.threaded.includes(i)) s.threaded.push(i);
         events.push({ type: "grindStart", index: i });
       }
     } else if (grind) {
@@ -257,6 +281,37 @@ export function speedOf(s: RunnerState): number {
 
 function shiftGear(s: RunnerState, by: number): void {
   s.gear = Math.max(0, Math.min(TUNING.gears.length - 1, s.gear + by));
+}
+
+/** True in top gear, when the sunglasses are on and can absorb a crash. */
+export function shielded(s: RunnerState, options: RunnerOptions): boolean {
+  return options.shield !== false && s.gear === TUNING.gears.length - 1;
+}
+
+/**
+ * The sunglasses absorb a fall or a cliff: the doughnut is put back on the
+ * ground just before the gap it went into, in first gear. It still has to
+ * make that jump, so the free crash never skips a void.
+ */
+function rescue(s: RunnerState, level: LevelData, options: RunnerOptions, cause: DeathCause, events: RunnerEvent[]): RunnerEvent[] {
+  const before = level.ground.filter((g) => g.width > 0 && g.x + g.width <= s.x + 1).pop() ?? level.ground[0];
+  s.x = Math.max(before.x + 20, before.x + before.width - 60);
+  s.y = VIEW.groundY - R;
+  s.vy = 0;
+  s.grounded = true;
+  s.coyote = TUNING.coyoteTime;
+  s.buffer = 0;
+  s.canCutJump = false;
+  s.airJumpsLeft = options.airJumps;
+  s.grinds = [];
+  s.airGrinds = 0;
+  s.gear = 0;
+  s.chain = 0;
+  const reachBack = s.x - DOUGHNUT.halfWidth;
+  s.nextSausage = level.sausages.findIndex((z) => z.x + z.length > reachBack);
+  if (s.nextSausage < 0) s.nextSausage = level.sausages.length;
+  events.push({ type: "save", cause, respawned: true });
+  return events;
 }
 
 function die(s: RunnerState, cause: DeathCause, events: RunnerEvent[]): RunnerEvent[] {

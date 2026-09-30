@@ -201,3 +201,51 @@ describe("air jumps and air combos", () => {
     expect(s.dead).toBe("missed");
   });
 });
+
+describe("sunglasses' free crash", () => {
+  const TOP = TUNING.gears.length - 1;
+
+  it("smashes through a sausage in top gear and drops to first gear", () => {
+    const level = withSausages(cocktail(300, VIEW.groundY - 8, 40));
+    const s = createRunner(level);
+    s.gear = TOP;
+    const events = run(s, level, 200);
+    expect(s.dead).toBeNull();
+    expect(events).toContainEqual({ type: "save", cause: "sausage", respawned: false, index: 0 });
+    expect(s.gear).toBe(0);
+    expect(s.smashed).toEqual([0]);
+    expect(events.map((e) => e.type)).toContain("skip");
+  });
+
+  it("puts the doughnut back before a void it fell into", () => {
+    const gap: LevelData = { ...flat, ground: [{ x: 0, width: 600 }, { x: 1200, width: 100000 }] };
+    const s = createRunner(gap);
+    s.gear = TOP;
+    const events: RunnerEvent[] = [];
+    while (!events.some((e) => e.type === "save") && !s.dead) events.push(...run(s, gap, 1));
+    expect(s.dead).toBeNull();
+    expect(events.at(-1)).toEqual({ type: "save", cause: "fell", respawned: true });
+    expect(s.x).toBe(540);
+    expect(s.grounded).toBe(true);
+    expect(s.gear).toBe(0);
+    // Only once: without the sunglasses the next fall is fatal.
+    run(s, gap, 400);
+    expect(s.dead).toBe("fell");
+  });
+
+  it("does nothing below top gear", () => {
+    const level = withSausages(cocktail(300, VIEW.groundY - 8, 40));
+    const s = createRunner(level);
+    s.gear = TOP - 1;
+    run(s, level, 200);
+    expect(s.dead).toBe("sausage");
+  });
+
+  it("can be switched off", () => {
+    const level = withSausages(cocktail(300, VIEW.groundY - 8, 40));
+    const s = createRunner(level);
+    s.gear = TOP;
+    for (let i = 0; i < 200; i++) stepRunner(s, { held: false, pressed: false }, level, { airJumps: 0, shield: false });
+    expect(s.dead).toBe("sausage");
+  });
+});

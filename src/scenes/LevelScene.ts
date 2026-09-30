@@ -15,7 +15,7 @@ import { h, overlay } from "../ui";
 import { ART_HALF_WIDTH, EYES_OFFSET, SHADES_FRAMES } from "./BootScene";
 import { FUN_FONT } from "./fonts";
 import { showRainbow } from "./rainbowText";
-import { DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
+import { addSkySprinkles, DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
 import { COLORS, SPRINKLE_COLORS } from "./palette";
 
 /** What the level scene is asked to play, and where it goes afterwards. */
@@ -111,7 +111,13 @@ export class LevelScene extends Phaser.Scene {
   // Meme sunglasses that drop onto the doughnut's face in top gear.
   private shades!: Phaser.GameObjects.Image;
   private shadesOn = false;
-  private shadesDrop = 1; // 0 on the face, 1 lifted out of view
+  // 0 on the face, 1 lifted out of view. Its own object so its tween never
+  // cancels the hop's, and the other way round.
+  private glassDrop = { v: 1 };
+  // 0 resting on the eyes, 1 lifted off them for a moment during a jump.
+  private glassHop = { v: 0 };
+  // Set when the glasses were knocked off by a crash, so they spin away.
+  private glassSpin = false;
   private shadesFrame = 0;
   private wiggles = new Map<number, { rope: Phaser.GameObjects.Rope; start: number; end: number | null }>();
   private crumbs!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -142,6 +148,7 @@ export class LevelScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setScroll(0, 0);
+    addSkySprinkles(this);
     drawBackdrop(this, this.level.length);
     drawGround(this, this.level);
     this.sausages = this.level.sausages.map((s) => drawSausage(this, s));
@@ -153,7 +160,9 @@ export class LevelScene extends Phaser.Scene {
     this.eyes = this.add.image(0, 0, "doughnut-eyes").setDepth(DEPTH.front + 2);
     this.shades = this.add.image(0, 0, "shades-0").setDepth(DEPTH.front + 4).setVisible(false);
     this.shadesOn = false;
-    this.shadesDrop = 1;
+    this.glassDrop = { v: 1 };
+    this.glassHop = { v: 0 };
+    this.glassSpin = false;
     this.wiggles = new Map();
     this.sprinkles = Array.from({ length: SPRINKLES }, (_, i) =>
       this.add.image(0, 0, "sprinkle").setTint(SPRINKLE_COLORS[i % SPRINKLE_COLORS.length]),
@@ -496,7 +505,10 @@ export class LevelScene extends Phaser.Scene {
     this.wiggles.forEach((w) => w.rope.destroy());
     this.wiggles.clear();
     this.shadesOn = false;
-    this.shadesDrop = 1;
+    this.tweens.killTweensOf([this.glassDrop, this.glassHop]);
+    this.glassDrop.v = 1;
+    this.glassHop.v = 0;
+    this.glassSpin = false;
     this.cameras.main.setScroll(this.runner.x - VIEW.playerScreenX, 0);
     this.render(1, 0);
   }
@@ -505,10 +517,12 @@ export class LevelScene extends Phaser.Scene {
     switch (e.type) {
       case "jump":
         this.pushOff(1);
+        this.hopGlasses();
         this.dust.explode(10, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "airJump":
         this.pushOff(0.8);
+        this.hopGlasses();
         this.puff.explode(14, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "land":
@@ -533,6 +547,9 @@ export class LevelScene extends Phaser.Scene {
       case "skip":
         this.sausages[e.index].setAlpha(0.3);
         this.popText("Skipped: chain lost", false);
+        break;
+      case "save":
+        this.onSave(e);
         break;
       case "die":
         this.deaths += 1;
@@ -657,12 +674,14 @@ export class LevelScene extends Phaser.Scene {
     const sy = this.back.scaleY;
     this.eyes.setPosition(x + EYES_OFFSET.x * sx, y + EYES_OFFSET.y * sy).setScale(sx, sy);
     // The sunglasses sit over the eyes, dropping in from above.
-    const lift = this.shadesDrop * 140;
+    // On a jump they lift clear of the eyes, tilting, then land back.
+    const lift = this.glassDrop.v * 140 + this.glassHop.v * 30;
     this.shades
       .setPosition(x + (EYES_OFFSET.x + 2) * sx, y + (EYES_OFFSET.y + 1) * sy - lift)
       .setScale(sx * 1.5, sy * 1.5)
-      .setAlpha(1 - this.shadesDrop * 0.6)
-      .setVisible(this.shadesDrop < 1 && this.eyes.visible);
+      .setRotation(-0.35 * this.glassHop.v + (this.glassSpin ? this.glassDrop.v * 7 : 0))
+      .setAlpha(1 - this.glassDrop.v * 0.6)
+      .setVisible(this.glassDrop.v < 1 && this.eyes.visible);
     const roll = x / ROLL_RADIUS;
     this.sprinkles.forEach((sprinkle, i) => {
       const a = roll + (i / SPRINKLES) * Math.PI * 2;
@@ -693,16 +712,53 @@ export class LevelScene extends Phaser.Scene {
     });
   }
 
+  /** With the sunglasses on, a jump pops them off the eyes and they land back. */
+  private hopGlasses(): void {
+    if (!this.shadesOn) return;
+    this.tweens.killTweensOf(this.glassHop);
+    this.tweens.chain({
+      targets: this.glassHop,
+      tweens: [
+        { v: 1, duration: 130, ease: "Quad.easeOut" },
+        { v: 0, duration: 380, delay: 170, ease: "Bounce.easeOut" },
+      ],
+    });
+  }
+
+  /**
+   * The sunglasses took a crash for the doughnut: they spin away, the sausage
+   * it hit bursts, and a fall puts the doughnut back before the gap.
+   */
+  private onSave(e: Extract<RunnerEvent, { type: "save" }>): void {
+    this.glassSpin = true;
+    this.cameras.main.shake(160, 0.008);
+    this.crumbs.explode(24, this.runner.x, this.runner.y);
+    if (e.index !== undefined) {
+      const sausage = this.sausages[e.index];
+      this.crumbs.explode(18, sausage.x + sausage.displayWidth / 2, sausage.y + sausage.displayHeight / 2);
+      this.wiggles.get(e.index)?.rope.destroy();
+      this.wiggles.delete(e.index);
+      sausage.setVisible(false);
+    }
+    if (e.respawned) {
+      // Draw from the new spot rather than streaking back across the level.
+      this.prevX = this.runner.x;
+      this.prevY = this.runner.y;
+    }
+    this.popText("SAVED BY THE SHADES!", true);
+  }
+
   /** Puts the sunglasses on in top gear and takes them off below it. */
   private updateShades(gear: number, deltaMs: number): void {
     // They stay on through a finish at top speed, and come off in a crash.
     const top = gear === TUNING.gears.length - 1 && !this.runner.dead;
     if (top !== this.shadesOn) {
       this.shadesOn = top;
-      this.tweens.killTweensOf(this);
+      if (top) this.glassSpin = false;
+      this.tweens.killTweensOf(this.glassDrop);
       this.tweens.add({
-        targets: this,
-        shadesDrop: top ? 0 : 1,
+        targets: this.glassDrop,
+        v: top ? 0 : 1,
         duration: top ? 420 : 300,
         ease: top ? "Bounce.easeOut" : "Quad.easeIn",
       });

@@ -53,6 +53,7 @@ function keyOf(n: Node): string {
     s.airJumpsLeft,
     Math.round(s.coyote * 100),
     s.gear,
+    s.smashed.join(";"),
     // A grind in progress will change the speed when it ends.
     s.grinds.map((g) => `${g.index}:${Math.round((g.offsetSum / g.steps) * 20)}`).join(";"),
     n.held ? 1 : 0,

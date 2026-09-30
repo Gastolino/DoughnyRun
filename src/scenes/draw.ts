@@ -223,26 +223,163 @@ export function drawBackdrop(scene: Phaser.Scene, length: number): Phaser.GameOb
   return out;
 }
 
+// ---- The ground ---------------------------------------------------------------
+//
+// Each stretch of ground is a slab of dough with vanilla glaze poured over the
+// top, like the side of a doughnut: the top the doughnut rolls on is flat,
+// and the glaze's lower edge runs in waves and drips over the dough, wrapping
+// round the corners and down the cliff faces.
+
+const DOUGH = { base: "#dca062", dark: "#c3854a", light: "#ecbd83", pore: "#b77a42" };
+const GLAZE = { fill: "#fff6fa", shadow: "#efc6d8", shine: "#ffffff" };
+const GLAZE_DEPTH = 46;
+const GLAZE_SIDE = 12;
+
+/** A tile of dough crumb: speckles and pores, repeating seamlessly. */
+function makeDoughTile(scene: Phaser.Scene): string {
+  const key = "dough-tile";
+  if (scene.textures.exists(key)) return key;
+  const size = 96;
+  const tex = scene.textures.createCanvas(key, size, size);
+  if (!tex) return key;
+  const g = tex.getContext();
+  g.fillStyle = DOUGH.base;
+  g.fillRect(0, 0, size, size);
+  const rand = seeded(7);
+  const dot = (color: string, r: number, stretch: number) => {
+    const x = rand() * size;
+    const y = rand() * size;
+    g.fillStyle = color;
+    // Drawn again across each edge it overlaps, so the tile repeats cleanly.
+    for (const dx of [-size, 0, size]) {
+      for (const dy of [-size, 0, size]) {
+        g.beginPath();
+        g.ellipse(x + dx, y + dy, r * stretch, r, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+  };
+  for (let i = 0; i < 60; i++) dot(DOUGH.light, 1 + rand() * 2.2, 1 + rand());
+  for (let i = 0; i < 45; i++) dot(DOUGH.dark, 0.8 + rand() * 1.8, 1 + rand() * 0.8);
+  for (let i = 0; i < 10; i++) dot(DOUGH.pore, 1.5 + rand() * 2, 1.4);
+  tex.refresh();
+  return key;
+}
+
+/** The glaze for one stretch of ground, drawn to its exact width. */
+function makeGlaze(scene: Phaser.Scene, x: number, width: number): string {
+  const key = `glaze-seg:${x}:${width}`;
+  if (scene.textures.exists(key)) return key;
+  const w = width + GLAZE_SIDE * 2;
+  const tex = scene.textures.createCanvas(key, Math.ceil(w), GLAZE_DEPTH);
+  if (!tex) return key;
+  const g = tex.getContext();
+  const rand = seeded(Math.round(x) * 31 + Math.round(width));
+  const left = GLAZE_SIDE;
+  const right = GLAZE_SIDE + width;
+
+  // The lower edge: gentle waves plus the odd longer drip.
+  const drips: { at: number; len: number; half: number }[] = [];
+  for (let d = left + 20 + rand() * 60; d < right - 20; d += 60 + rand() * 90) {
+    drips.push({ at: d, len: 7 + rand() * 13, half: 9 + rand() * 6 });
+  }
+  const phase = rand() * Math.PI * 2;
+  const edge = (px: number): number => {
+    let y = 12 + 3 * Math.sin(px / 23 + phase) + 2 * Math.sin(px / 9.5 - phase);
+    for (const d of drips) {
+      // A round-ended drop: steep sides and a full, rounded bottom.
+      const t = (px - d.at) / d.half;
+      if (Math.abs(t) < 1) y += d.len * Math.pow(1 - t * t, 0.45);
+    }
+    return y;
+  };
+  // Down each cliff face the glaze runs a little further.
+  const sideDrip = 22 + rand() * 12;
+
+  const outline = (dy: number) => {
+    g.beginPath();
+    g.moveTo(left, 0);
+    g.lineTo(right, 0);
+    g.quadraticCurveTo(right + GLAZE_SIDE * 0.6, 0, right + GLAZE_SIDE * 0.55, 8);
+    g.lineTo(right + GLAZE_SIDE * 0.5, sideDrip + dy - 6);
+    g.quadraticCurveTo(right + GLAZE_SIDE * 0.25, sideDrip + dy + 2, right - 2, sideDrip + dy - 6);
+    for (let px = right - 4; px > left + 4; px -= 3) g.lineTo(px, edge(px) + dy);
+    g.lineTo(left + 2, sideDrip + dy - 6);
+    g.quadraticCurveTo(left - GLAZE_SIDE * 0.25, sideDrip + dy + 2, left - GLAZE_SIDE * 0.5, sideDrip + dy - 6);
+    g.lineTo(left - GLAZE_SIDE * 0.55, 8);
+    g.quadraticCurveTo(left - GLAZE_SIDE * 0.6, 0, left, 0);
+    g.closePath();
+  };
+  // A pink shadow under the drips, then the glaze, then a shine along the top.
+  outline(2.5);
+  g.fillStyle = GLAZE.shadow;
+  g.fill();
+  outline(0);
+  g.fillStyle = GLAZE.fill;
+  g.fill();
+  g.strokeStyle = GLAZE.shine;
+  g.lineWidth = 2;
+  g.lineCap = "round";
+  g.beginPath();
+  g.moveTo(left + 6, 3.5);
+  g.lineTo(right - 6, 3.5);
+  g.stroke();
+  tex.refresh();
+  return key;
+}
+
 export function drawGround(scene: Phaser.Scene, level: LevelData): Phaser.GameObjects.GameObject[] {
   // Behind the whole doughnut, whose two halves straddle the sausages; in
   // between them, the ground would hide only one half of its bottom.
-  const g = scene.add.graphics().setDepth(DEPTH.ground);
-  const cap = bake(scene, "ground-cap", 12, 12, (c) => c.fillStyle(COLORS.groundTop).fillCircle(6, 6, 6));
-  const out: Phaser.GameObjects.GameObject[] = [g];
+  const dough = makeDoughTile(scene);
+  const out: Phaser.GameObjects.GameObject[] = [];
   // Deep enough to fill the view when the camera looks down from a height.
   const depth = VIEW.height * 2;
   for (const seg of level.ground) {
     if (seg.width <= 0) continue;
-    g.fillStyle(COLORS.ground);
-    g.fillRect(seg.x, VIEW.groundY, seg.width, depth);
-    // The icing strip starts exactly where the doughnut stands, with
-    // rounded ends from the cap image.
-    g.fillStyle(COLORS.groundTop);
-    g.fillRect(seg.x + 6, VIEW.groundY, Math.max(0, seg.width - 12), 12);
-    out.push(scene.add.image(seg.x + 6, VIEW.groundY + 6, cap).setDepth(DEPTH.ground));
-    out.push(scene.add.image(seg.x + seg.width - 6, VIEW.groundY + 6, cap).setDepth(DEPTH.ground));
+    const body = scene.add
+      .tileSprite(seg.x, VIEW.groundY, seg.width, depth, dough)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.ground);
+    // Line the crumb up with the world, so neighbouring slabs match.
+    body.tilePositionX = seg.x;
+    const key = makeGlaze(scene, seg.x, seg.width);
+    const glaze = scene.add
+      .image(seg.x - GLAZE_SIDE, VIEW.groundY, key)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.ground);
+    // Each slab's glaze is drawn to measure; drop it with the slab so an
+    // editor redraw does not pile up textures.
+    glaze.once(Phaser.GameObjects.Events.DESTROY, () => {
+      if (scene.textures.exists(key)) scene.textures.remove(key);
+    });
+    out.push(body, glaze);
   }
   return out;
+}
+
+/**
+ * Candy sprinkles drifting down the sky behind the mountains, fixed to the
+ * screen so that they fall steadily whatever the camera does.
+ */
+export function addSkySprinkles(scene: Phaser.Scene): Phaser.GameObjects.Particles.ParticleEmitter {
+  const sky = scene.add
+    .particles(0, -20, "pill", {
+      x: { min: -40, max: VIEW.width + 40 },
+      speedY: { min: 18, max: 36 },
+      speedX: { min: -6, max: 6 },
+      rotate: { start: 0, end: 200 },
+      scale: { min: 0.4, max: 0.7 },
+      alpha: 0.55,
+      lifespan: 24000,
+      frequency: 320,
+      tint: [0xff9cc8, 0x9fd4ff, 0xfff08a, 0xa8ecb0, 0xcdb4ff, 0xffc49a, 0xffffff],
+    })
+    .setScrollFactor(0)
+    .setDepth(-1);
+  // Start with a sky already full of sprinkles rather than an empty one.
+  sky.fastForward(16000);
+  return sky;
 }
 
 export function drawSausage(scene: Phaser.Scene, s: Sausage): Phaser.GameObjects.Image {

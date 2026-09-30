@@ -44,7 +44,8 @@ describe.each(CAMPAIGN.map((c) => [c.id, c] as const))("level %s", (_id, { level
   } else {
     const voidSausages = level.sausages.map((s, i) => [i, s] as const).filter(([, s]) => isOverVoid(level, s));
     it.each(voidSausages.map(([i, s]) => [i, s.x]))("forces sausage %i at x=%i through the hole", (i) => {
-      const result = solveLevel(level, { ...options, solidSausage: i });
+      // Without the sunglasses' free crash, which may deliberately smash one sausage.
+      const result = solveLevel(level, { ...options, solidSausage: i, shield: false });
       expect(result.solvable, "the doughnut got past without threading it").toBe(false);
     });
   }

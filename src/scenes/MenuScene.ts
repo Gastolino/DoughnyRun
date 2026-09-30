@@ -9,7 +9,7 @@ import { drawRainbow, RAINBOW_SCALE } from "./rainbowText";
 import type { EditorRequest } from "./EditorScene";
 import type { PlayRequest } from "./LevelScene";
 import { EYES_OFFSET } from "./BootScene";
-import { drawBackdrop, drawGround } from "./draw";
+import { addSkySprinkles, drawBackdrop, drawGround } from "./draw";
 
 // The title screen: the campaign in order (each level opens when the one
 // before it is finished), the player's own levels, and the editor.
@@ -20,6 +20,7 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setScroll(0, 0);
+    addSkySprinkles(this);
     drawBackdrop(this, VIEW.width);
     drawGround(this, { name: "", length: VIEW.width, topping: "plain", ground: [{ x: 0, width: VIEW.width * 2 }], sausages: [] });
     this.add.image(VIEW.playerScreenX, VIEW.groundY - 48, "doughnut-back-plain");
