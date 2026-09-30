@@ -763,9 +763,9 @@ export class LevelScene extends Phaser.Scene {
     // Pinned to the screen, since the camera keeps the doughnut in one place.
     const x = VIEW.playerScreenX + 40;
     // Kept below the score display, which the text drifts towards as it fades.
-    const size = (big ? 26 : 19) + (coarsePointer() ? 6 : 0);
+    const size = (big ? 28 : 21) + (coarsePointer() ? 6 : 0);
     const y = Math.max(170, this.runner.y - this.cameras.main.scrollY - DOUGHNUT.outerRadius - 40);
-    const t = showRainbow(this, x, y, text, size, DEPTH.fx, big);
+    const t = showRainbow(this, x, y, text, size, DEPTH.fx, big, "bubbly");
     const key = t.texture.key;
     const done = () => {
       t.destroy();
