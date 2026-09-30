@@ -41,30 +41,108 @@ interface Node {
 
 export const STEPS_PER_DECISION = 2;
 
-function keyOf(n: Node): string {
+const clampInt = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, Math.round(v)));
+
+/**
+ * A state packed into one number: position, height, fall speed, the flags,
+ * air jumps left, coyote time, gear and the button. Each field has a fixed
+ * range, and together they take 47 bits, inside a double's exact 53. Numbers
+ * hash far faster than strings; building and hashing string keys took about
+ * three quarters of the search's time.
+ */
+function numericKey(n: Node): number {
   const s = n.state;
-  return [
-    // Doughnuts at different speeds drift apart, so position is part of the state.
-    Math.round(s.x),
-    Math.round(s.y),
-    Math.round(s.vy / 10),
-    s.grounded ? 1 : 0,
-    s.canCutJump ? 1 : 0,
-    s.airJumpsLeft,
-    Math.round(s.coyote * 100),
-    s.gear,
-    s.smashed.join(";"),
-    // A grind in progress will change the speed when it ends.
-    s.grinds.map((g) => `${g.index}:${Math.round((g.offsetSum / g.steps) * 20)}`).join(";"),
-    n.held ? 1 : 0,
-  ].join(",");
+  // Doughnuts at different speeds drift apart, so position is part of the state.
+  let k = clampInt(s.x, 0, 65535);
+  k = k * 2048 + clampInt(s.y + 1024, 0, 2047);
+  k = k * 256 + clampInt(s.vy / 10 + 100, 0, 255);
+  k = k * 8 + (s.grounded ? 4 : 0) + (s.canCutJump ? 2 : 0) + (n.held ? 1 : 0);
+  k = k * 4 + clampInt(s.airJumpsLeft, 0, 3);
+  k = k * 16 + clampInt(s.coyote * 100, 0, 15);
+  k = k * 8 + clampInt(s.gear, 0, 7);
+  return k;
+}
+
+/**
+ * A set of non-negative whole numbers below 2^53, kept in a typed array with
+ * open addressing. A built-in Set boxes every number this large as a separate
+ * object, which made the search spend most of its time in hashing and garbage
+ * collection.
+ */
+export class NumberSet {
+  private keys: Float64Array;
+  private mask: number;
+  size = 0;
+
+  constructor(capacity = 1 << 20) {
+    this.keys = new Float64Array(capacity).fill(-1);
+    this.mask = capacity - 1;
+  }
+
+  private slot(k: number): number {
+    const lo = k >>> 0;
+    const hi = Math.floor(k / 4294967296) >>> 0;
+    let h = Math.imul(lo ^ Math.imul(hi, 0x9e3779b1), 0x85ebca6b);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16;
+    return h & this.mask;
+  }
+
+  /** Adds k; returns false if it was already present. */
+  add(k: number): boolean {
+    let i = this.slot(k);
+    const keys = this.keys;
+    while (keys[i] !== -1) {
+      if (keys[i] === k) return false;
+      i = (i + 1) & this.mask;
+    }
+    keys[i] = k;
+    this.size++;
+    if (this.size * 2 > keys.length) this.grow();
+    return true;
+  }
+
+  private grow(): void {
+    const old = this.keys;
+    const keys = new Float64Array(old.length * 2).fill(-1);
+    this.keys = keys;
+    this.mask = keys.length - 1;
+    for (const k of old) {
+      if (k === -1) continue;
+      let i = this.slot(k);
+      while (keys[i] !== -1) i = (i + 1) & this.mask;
+      keys[i] = k;
+    }
+  }
+}
+
+/**
+ * The rarer parts of a state, present only mid-grind or after the free
+ * crash, as text. A grind in progress will change the speed when it ends.
+ */
+function extraKey(s: RunnerState): string | null {
+  if (s.grinds.length === 0 && s.smashed.length === 0) return null;
+  const grinds = s.grinds.map((g) => `${g.index}:${Math.round((g.offsetSum / g.steps) * 20)}`).join(";");
+  return `${grinds}|${s.smashed.join(";")}`;
 }
 
 export function solveLevel(level: LevelData, options: RunnerOptions = PLAIN): SolveResult {
   const start = createRunner(level, options);
   const stack: Node[] = [{ state: start, held: false, input: { held: false, pressed: false }, parent: null }];
   let furthestX = start.x;
-  const seen = new Set<string>();
+  const seen = new NumberSet();
+  const seenRare = new Set<string>();
+  /** Records a state; false when an identical one was already seen. */
+  const firstVisit = (n: Node): boolean => {
+    const key = numericKey(n);
+    const extra = extraKey(n.state);
+    if (extra === null) return seen.add(key);
+    const full = `${key}|${extra}`;
+    if (seenRare.has(full)) return false;
+    seenRare.add(full);
+    return true;
+  };
 
   while (stack.length > 0) {
     const node = stack.pop() as Node;
@@ -88,9 +166,7 @@ export function solveLevel(level: LevelData, options: RunnerOptions = PLAIN): So
       if (state.finished) {
         return { solvable: true, furthestX, inputs: trace(child) };
       }
-      const key = keyOf(child);
-      if (!seen.has(key)) {
-        seen.add(key);
+      if (firstVisit(child)) {
         stack.push(child);
       }
     }

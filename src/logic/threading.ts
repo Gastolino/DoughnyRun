@@ -13,7 +13,16 @@ export interface RingShape {
 }
 
 export function ringAt(cx: number, cy: number): RingShape {
-  return { cx, cy, ...DOUGHNUT };
+  // Written out rather than spread from DOUGHNUT: the simulation calls this
+  // every step, and the solver runs millions of steps.
+  return {
+    cx,
+    cy,
+    outerRadius: DOUGHNUT.outerRadius,
+    holeRadius: DOUGHNUT.holeRadius,
+    halfWidth: DOUGHNUT.halfWidth,
+    holeForgiveness: DOUGHNUT.holeForgiveness,
+  };
 }
 
 /**
