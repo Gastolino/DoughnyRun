@@ -211,26 +211,19 @@ describe("sunglasses' free crash", () => {
     s.gear = TOP;
     const events = run(s, level, 200);
     expect(s.dead).toBeNull();
-    expect(events).toContainEqual({ type: "save", cause: "sausage", respawned: false, index: 0 });
+    expect(events).toContainEqual({ type: "save", index: 0 });
     expect(s.gear).toBe(0);
     expect(s.smashed).toEqual([0]);
     expect(events.map((e) => e.type)).toContain("skip");
   });
 
-  it("puts the doughnut back before a void it fell into", () => {
+  it("does not save a fall into a void or a crash into a cliff", () => {
     const gap: LevelData = { ...flat, ground: [{ x: 0, width: 600 }, { x: 1200, width: 100000 }] };
     const s = createRunner(gap);
     s.gear = TOP;
-    const events: RunnerEvent[] = [];
-    while (!events.some((e) => e.type === "save") && !s.dead) events.push(...run(s, gap, 1));
-    expect(s.dead).toBeNull();
-    expect(events.at(-1)).toEqual({ type: "save", cause: "fell", respawned: true });
-    expect(s.x).toBe(540);
-    expect(s.grounded).toBe(true);
-    expect(s.gear).toBe(0);
-    // Only once: without the sunglasses the next fall is fatal.
-    run(s, gap, 400);
-    expect(s.dead).toBe("fell");
+    const events = run(s, gap, 400);
+    expect(events.map((e) => e.type)).not.toContain("save");
+    expect(s.dead).not.toBeNull();
   });
 
   it("does nothing below top gear", () => {

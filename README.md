@@ -46,9 +46,9 @@ next one, and a new topping comes with the level that first needs it.
 | Pink icing      | One jump                               | 1-1 Sprinkle Meadow |
 | Chocolate glaze | Double jump: press again in the air    | 1-2 Glaze Heights |
 
-In top gear the doughnut wears its sunglasses, and they absorb one crash:
-it smashes through a sausage it hits, or is put back on the ground just
-before a void it fell into, and drops to first gear. The level tests prove
+In top gear the doughnut wears its sunglasses, and they absorb one crash
+into a sausage: the doughnut smashes through it and drops to first gear.
+Falling into a void or hitting a cliff still ends the run. The level tests prove
 sausages cannot be skipped without spending that free crash.
 
 Threading a second sausage before touching the ground is an air combo: that

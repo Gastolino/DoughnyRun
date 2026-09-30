@@ -21,7 +21,8 @@ export interface RunnerOptions {
    */
   mustThread?: readonly number[];
   /**
-   * In top gear the doughnut wears its sunglasses, and they absorb one crash.
+   * In top gear the doughnut wears its sunglasses, and they absorb one crash
+   * into a sausage (not a fall or a cliff).
    * On by default; level checks turn it off to prove sausages cannot be
    * avoided without spending it.
    */
@@ -92,7 +93,7 @@ export type RunnerEvent =
   | { type: "skip"; index: number }
   | { type: "die"; cause: DeathCause }
   /** The sunglasses absorbed a crash; the doughnut carries on in first gear. */
-  | { type: "save"; cause: DeathCause; respawned: boolean; index?: number }
+  | { type: "save"; index: number }
   | { type: "finish" };
 
 const R = DOUGHNUT.outerRadius;
@@ -187,7 +188,6 @@ export function stepRunner(
     if (prevBottom > VIEW.groundY + SURFACE_TOLERANCE) {
       // Already below the surface when the ground arrived: the doughnut has
       // run into the side of a cliff.
-      if (shielded(s, options)) return rescue(s, level, options, "wall", events);
       return die(s, "wall", events);
     }
     if (s.vy >= 0 && bottom >= VIEW.groundY) {
@@ -203,10 +203,7 @@ export function stepRunner(
     s.grounded = false;
   }
 
-  if (s.y - R > VIEW.height) {
-    if (shielded(s, options)) return rescue(s, level, options, "fell", events);
-    return die(s, "fell", events);
-  }
+  if (s.y - R > VIEW.height) return die(s, "fell", events);
 
   const ring = ringAt(s.x, s.y);
   for (let i = s.nextSausage; i < level.sausages.length; i++) {
@@ -222,7 +219,7 @@ export function stepRunner(
       s.grinds = s.grinds.filter((g) => g.index !== i);
       s.gear = 0;
       s.chain = 0;
-      events.push({ type: "save", cause: "sausage", respawned: false, index: i });
+      events.push({ type: "save", index: i });
       continue;
     }
     if (result === "threaded") {
@@ -283,35 +280,9 @@ function shiftGear(s: RunnerState, by: number): void {
   s.gear = Math.max(0, Math.min(TUNING.gears.length - 1, s.gear + by));
 }
 
-/** True in top gear, when the sunglasses are on and can absorb a crash. */
+/** True in top gear, when the sunglasses are on and can absorb a sausage crash. */
 export function shielded(s: RunnerState, options: RunnerOptions): boolean {
   return options.shield !== false && s.gear === TUNING.gears.length - 1;
-}
-
-/**
- * The sunglasses absorb a fall or a cliff: the doughnut is put back on the
- * ground just before the gap it went into, in first gear. It still has to
- * make that jump, so the free crash never skips a void.
- */
-function rescue(s: RunnerState, level: LevelData, options: RunnerOptions, cause: DeathCause, events: RunnerEvent[]): RunnerEvent[] {
-  const before = level.ground.filter((g) => g.width > 0 && g.x + g.width <= s.x + 1).pop() ?? level.ground[0];
-  s.x = Math.max(before.x + 20, before.x + before.width - 60);
-  s.y = VIEW.groundY - R;
-  s.vy = 0;
-  s.grounded = true;
-  s.coyote = TUNING.coyoteTime;
-  s.buffer = 0;
-  s.canCutJump = false;
-  s.airJumpsLeft = options.airJumps;
-  s.grinds = [];
-  s.airGrinds = 0;
-  s.gear = 0;
-  s.chain = 0;
-  const reachBack = s.x - DOUGHNUT.halfWidth;
-  s.nextSausage = level.sausages.findIndex((z) => z.x + z.length > reachBack);
-  if (s.nextSausage < 0) s.nextSausage = level.sausages.length;
-  events.push({ type: "save", cause, respawned: true });
-  return events;
 }
 
 function die(s: RunnerState, cause: DeathCause, events: RunnerEvent[]): RunnerEvent[] {

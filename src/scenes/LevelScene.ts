@@ -725,26 +725,16 @@ export class LevelScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * The sunglasses took a crash for the doughnut: they spin away, the sausage
-   * it hit bursts, and a fall puts the doughnut back before the gap.
-   */
+  /** The sunglasses took a sausage crash: they spin away and the sausage bursts. */
   private onSave(e: Extract<RunnerEvent, { type: "save" }>): void {
     this.glassSpin = true;
     this.cameras.main.shake(160, 0.008);
     this.crumbs.explode(24, this.runner.x, this.runner.y);
-    if (e.index !== undefined) {
-      const sausage = this.sausages[e.index];
-      this.crumbs.explode(18, sausage.x + sausage.displayWidth / 2, sausage.y + sausage.displayHeight / 2);
-      this.wiggles.get(e.index)?.rope.destroy();
-      this.wiggles.delete(e.index);
-      sausage.setVisible(false);
-    }
-    if (e.respawned) {
-      // Draw from the new spot rather than streaking back across the level.
-      this.prevX = this.runner.x;
-      this.prevY = this.runner.y;
-    }
+    const sausage = this.sausages[e.index];
+    this.crumbs.explode(18, sausage.x + sausage.displayWidth / 2, sausage.y + sausage.displayHeight / 2);
+    this.wiggles.get(e.index)?.rope.destroy();
+    this.wiggles.delete(e.index);
+    sausage.setVisible(false);
     this.popText("SAVED BY THE SHADES!", true);
   }
 
