@@ -392,3 +392,7 @@ body.editing #game {
   justify-content: flex-end;
   margin-top: 12px;
 }
+#level-ui .mute-button {
+  left: auto;
+  right: max(16px, env(safe-area-inset-right, 0px));
+}

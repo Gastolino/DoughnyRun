@@ -139,12 +139,23 @@ npm run build      # production build in dist/
 ```
 
 Controls: Space, Up, W, click or tap to jump; hold for a higher jump.
-R restarts, H shows the hitboxes and Esc returns to the menu. Add `#demo` to
+R restarts, H shows the hitboxes, M turns sound off and on, and Esc returns
+to the menu. Add `#demo` to
 the URL to watch the level solver play the first level, or `#demo-1-2` for another.
 
 On a phone the whole screen is the jump button, including the bars beside
 the game. The game waits for a first tap, pauses when the phone locks or the
 page is hidden, and asks to be turned sideways in portrait.
+
+## Sound
+
+Every sound is synthesised in the browser with the Web Audio API
+(`src/sound.ts`), so there are no audio files. It starts on the first press,
+since browsers allow sound only after one. Grinds sizzle while a sausage
+slides through, and grade chimes climb the scale as the chain grows. The
+arrest has a siren, the dentures clack faster as they close in, and a
+finish plays a fanfare. The button at the bottom right, or M, turns sound
+off and on, and the game remembers the choice.
 
 ## Look and feel
 

@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { surfaceAt } from "../logic/terrain";
 import { VIEW } from "../logic/tuning";
 import type { LevelData } from "../logic/types";
+import { sound } from "../sound";
 import { DEPTH } from "./draw";
 
 // The boss of a chase level: wind-up dentures in a police hat, drawn from
@@ -47,7 +48,12 @@ export class DentureChaser {
     const gap = doughnutX - chaserX;
     const closeness = Phaser.Math.Clamp(1 - gap / chaser.gap, 0, 1);
     // Chatter speeds up as the gap closes.
-    if (running) this.chatter += (deltaMs / 1000) * (10 + closeness * 16);
+    if (running) {
+      const before = Math.floor(this.chatter / Math.PI);
+      this.chatter += (deltaMs / 1000) * (10 + closeness * 16);
+      // A clack each time the teeth meet, louder as they close in.
+      if (Math.floor(this.chatter / Math.PI) !== before) sound.clack(0.04 + 0.22 * closeness);
+    }
     const open = 0.08 + 0.34 * Math.abs(Math.sin(this.chatter));
     const hop = Math.abs(Math.sin(this.chatter)) * 5;
     // Over a void they carry on at ground level, as if skittering across.

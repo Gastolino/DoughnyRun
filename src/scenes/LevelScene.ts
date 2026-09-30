@@ -11,6 +11,7 @@ import type { LevelData } from "../logic/types";
 import { coarsePointer, gameElement, isBlocked, keepAwake, onBlockedChange } from "../platform";
 import { recordFinish } from "../progress";
 import { solveAsync } from "../solveAsync";
+import { isMuted, setMuted, sound } from "../sound";
 import { h, overlay } from "../ui";
 import { ART_HALF_WIDTH, EYES_OFFSET, SHADES_FRAMES } from "./BootScene";
 import { READABLE_FONT, TITLE_FONT } from "./fonts";
@@ -98,6 +99,8 @@ export class LevelScene extends Phaser.Scene {
   private prevY = 0;
   private prevChaserX = 0;
   private boss: DentureChaser | null = null;
+  // The sizzle of each sausage passing through the hole, by index.
+  private sizzles = new Map<number, () => void>();
   private deaths = 0;
   private showHitboxes = false;
   private demoInputs: DecisionInput[] | null = null;
@@ -320,6 +323,7 @@ export class LevelScene extends Phaser.Scene {
     this.bindInput();
     this.watchForInterruptions();
     this.addBackButton();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.stopSizzles());
     this.restart();
 
     const demo = this.request.demo || new URLSearchParams(window.location.search).has("demo");
@@ -448,9 +452,28 @@ export class LevelScene extends Phaser.Scene {
   }
 
   /** A page button, outside the game area so that pressing it never jumps. */
+  private stopSizzles(): void {
+    this.sizzles.forEach((stop) => stop());
+    this.sizzles.clear();
+  }
+
   private addBackButton(): void {
     const label = this.request.returnTo === "editor" ? "Back to editor" : "Menu";
-    overlay("level-ui", h("button", { type: "button", class: "back-button", onclick: () => this.leave() }, label));
+    const mute = h("button", { type: "button", class: "back-button mute-button", "aria-pressed": String(isMuted()) }, isMuted() ? "Sound off" : "Sound on") as HTMLButtonElement;
+    const toggle = () => {
+      setMuted(!isMuted());
+      mute.textContent = isMuted() ? "Sound off" : "Sound on";
+      mute.setAttribute("aria-pressed", String(isMuted()));
+    };
+    // Kept from starting a jump: the press belongs to the button.
+    mute.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+    mute.addEventListener("click", toggle);
+    overlay(
+      "level-ui",
+      h("button", { type: "button", class: "back-button", onclick: () => this.leave() }, label),
+      mute,
+    );
+    this.input.keyboard?.on("keydown-M", toggle);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => document.getElementById("level-ui")?.remove());
   }
 
@@ -480,6 +503,7 @@ export class LevelScene extends Phaser.Scene {
   private pause(): void {
     if (this.mode !== "running") return;
     this.mode = "paused";
+    this.stopSizzles();
     this.holdPointer = null;
     this.pressLatch = false;
     // Resume drawing from where the doughnut stands, not a step behind it.
@@ -536,6 +560,7 @@ export class LevelScene extends Phaser.Scene {
   }
 
   private restart(): void {
+    this.stopSizzles();
     this.runner = createRunner(this.level, this.options);
     this.holdPrevious();
     this.updatesSinceStart = 0;
@@ -561,35 +586,44 @@ export class LevelScene extends Phaser.Scene {
   private onEvent(e: RunnerEvent): void {
     switch (e.type) {
       case "jump":
+        sound.jump();
         this.pushOff(1);
         this.hopGlasses();
         this.dust.explode(10, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "airJump":
+        sound.airJump();
         this.pushOff(0.8);
         this.hopGlasses();
         this.puff.explode(14, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "land":
+        sound.land();
         this.squash(1.25, 0.8);
         this.dust.explode(16, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         this.dustGlitter.explode(6, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "launch":
         // Off a ramp's lip: a kick of dust from the edge.
+        sound.launch();
         this.pushOff(0.5);
         this.dust.explode(12, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "boost":
+        sound.boost();
         this.squash(1.3, 0.8);
         this.dustGlitter.explode(14, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         this.popText("BOOST!", true);
         break;
       case "grindStart":
+        this.sizzles.set(e.index, sound.grind());
         this.sausages[e.index].setAlpha(0.85);
         this.startWiggle(e.index);
         break;
       case "grindEnd": {
+        this.sizzles.get(e.index)?.();
+        this.sizzles.delete(e.index);
+        sound.grade(e.grade, e.chain);
         this.sausages[e.index].setAlpha(0.5);
         const w = this.wiggles.get(e.index);
         if (w) w.end = this.time.now;
@@ -600,11 +634,18 @@ export class LevelScene extends Phaser.Scene {
         break;
       }
       case "save":
+        sound.save();
         this.onSave(e);
         break;
       case "die":
         this.deaths += 1;
+        this.stopSizzles();
         this.cameras.main.shake(140, 0.006);
+        if (e.cause === "sausage") sound.bonk();
+        else if (e.cause === "fell") sound.fall();
+        else if (e.cause === "wall") sound.splat();
+        else if (e.cause === "arrested") sound.siren();
+        else sound.clack(0.5);
         this.end();
         {
           const banner = () => this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`, 0);
@@ -613,6 +654,8 @@ export class LevelScene extends Phaser.Scene {
         }
         break;
       case "finish": {
+        this.stopSizzles();
+        sound.fanfare();
         this.end();
         // Worked out now, so the result is saved even if the lap is skipped.
         const text = this.finishText();
@@ -916,6 +959,7 @@ export class LevelScene extends Phaser.Scene {
           const lx = W / 2 + Math.cos(angle) * 30 * reach;
           const ly = H / 2 + Math.sin(angle) * 40 * reach;
           image.stamp("bite", undefined, lx, ly, { erase: true, angle: Phaser.Math.RadToDeg(angle), scale: 1.05 });
+          sound.crunch();
           // Crumbs fly from where the bite landed on screen.
           const k = image.scaleX;
           const cos = Math.cos(image.rotation);

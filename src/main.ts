@@ -8,9 +8,11 @@ import { BootScene } from "./scenes/BootScene";
 import { EditorScene } from "./scenes/EditorScene";
 import { LevelScene } from "./scenes/LevelScene";
 import { MenuScene } from "./scenes/MenuScene";
+import { unlockAudioOnFirstPress } from "./sound";
 
 function start(): void {
   setUpPage();
+  unlockAudioOnFirstPress();
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: "stage",
@@ -24,6 +26,7 @@ function start(): void {
     // keyboard of whatever the reader is typing. The scene takes focus on
     // the first press instead.
     autoFocus: false,
+    // Sound comes from src/sound.ts, which synthesises everything itself.
     audio: { noAudio: true },
     // The level scene runs its own fixed-step clock and interpolates between
     // steps; Phaser's smoothing would slow the game down at 30 fps.
