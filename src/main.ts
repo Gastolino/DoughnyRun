@@ -1,4 +1,6 @@
 import Phaser from "phaser";
+// Comic Neue ships with the game, so the lettering matches on every device.
+import "@fontsource/comic-neue/latin-700.css";
 import "./page.css";
 import { VIEW } from "./logic/tuning";
 import { refitOnResize, setUpPage } from "./platform";

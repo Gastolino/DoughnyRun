@@ -3,6 +3,7 @@ import { TOPPING_IDS } from "../logic/toppings";
 import type { ToppingId } from "../logic/toppings";
 import { DOUGHNUT } from "../logic/tuning";
 import { drawStar } from "./draw";
+import { loadFunFont } from "./fonts";
 import { COLORS, css } from "./palette";
 
 // Draws the greybox textures at start-up, so the game needs no image files.
@@ -14,8 +15,14 @@ import { COLORS, css } from "./palette";
 // that the sprinkles can roll around the ring beneath them.
 
 /** Half-width of the ring as drawn; the hitbox in tuning.ts is narrower. */
-export const ART_HALF_WIDTH = 32;
+export const ART_HALF_WIDTH = 40;
 const ART_HOLE_HALF_WIDTH = 12;
+
+/** Where the eyes (and the sunglasses) sit, from the ring's centre. */
+export const EYES_OFFSET = { x: 18, y: -33 } as const;
+
+/** Frames of the sunglasses' rainbow shimmer. */
+export const SHADES_FRAMES = 12;
 const PAD = 4;
 
 export class BootScene extends Phaser.Scene {
@@ -32,7 +39,10 @@ export class BootScene extends Phaser.Scene {
     this.makeCrumb();
     this.makeSprinkle();
     this.makeGlitter();
-    this.scene.start(window.location.hash === "#editor" ? "editor" : "menu");
+    this.makePill();
+    this.makeShades();
+    // Rainbow lettering is drawn onto canvases, which need the font ready.
+    void loadFunFont().then(() => this.scene.start(window.location.hash === "#editor" ? "editor" : "menu"));
   }
 
   private makeDoughnutHalf(key: string, half: "back" | "front", topping: ToppingId): void {
@@ -117,6 +127,75 @@ export class BootScene extends Phaser.Scene {
       ctx.fill();
     }
     tex.refresh();
+  }
+
+  /** A sugar sprinkle: a white capsule with a highlight, tinted in use. */
+  private makePill(): void {
+    const tex = this.textures.createCanvas("pill", 22, 9);
+    if (!tex) return;
+    const g = tex.getContext();
+    g.fillStyle = "#ffffff";
+    g.beginPath();
+    g.roundRect(0.5, 0.5, 21, 8, 4);
+    g.fill();
+    g.fillStyle = "rgba(0,0,0,0.12)";
+    g.beginPath();
+    g.roundRect(2, 5, 18, 3, 1.5);
+    g.fill();
+    tex.refresh();
+  }
+
+  /**
+   * Pixel sunglasses, the kind that drop onto a face in a meme, with a
+   * rainbow shimmer across the lenses. Each frame shifts the rainbow and the
+   * glint along, and the level cycles through them.
+   */
+  private makeShades(): void {
+    const cell = 2;
+    const cols = 22;
+    const rows = 6;
+    // Lens shape per row: [first column, last column] of the left lens.
+    const lens: [number, number][] = [
+      [1, 9],
+      [1, 9],
+      [1, 9],
+      [2, 8],
+      [3, 7],
+    ];
+    for (let f = 0; f < SHADES_FRAMES; f++) {
+      const tex = this.textures.createCanvas(`shades-${f}`, cols * cell, rows * cell);
+      if (!tex) continue;
+      const g = tex.getContext();
+      const px = (c: number, r: number, color: string) => {
+        g.fillStyle = color;
+        g.fillRect(c * cell, r * cell, cell, cell);
+      };
+      // The top bar and the bridge.
+      for (let c = 0; c < cols; c++) px(c, 0, "#111111");
+      for (const offset of [0, 11]) {
+        lens.forEach(([a, b], r) => {
+          for (let c = a; c <= b; c++) {
+            const col = c + offset;
+            const edge = c === a || c === b || r === lens.length - 1;
+            if (edge) {
+              px(col, r + 1, "#111111");
+              continue;
+            }
+            // Rainbow, darkened like a tinted lens, sliding along each frame.
+            const hue = ((col * 16 + r * 22 - (f * 360) / SHADES_FRAMES) % 360 + 360) % 360;
+            px(col, r + 1, `hsl(${hue} 85% 38%)`);
+          }
+        });
+      }
+      // A white glint sweeping across both lenses.
+      const glint = Math.round((f / SHADES_FRAMES) * (cols + 6)) - 3;
+      for (let r = 1; r < 4; r++) {
+        const c = glint - r;
+        const inLens = [0, 11].some((o) => c - o > lens[r - 1][0] && c - o < lens[r - 1][1]);
+        if (inLens) px(c, r + 1, "#ffffff");
+      }
+      tex.refresh();
+    }
   }
 
   /** A white four-pointed glint, and a soft round glow, both tinted in use. */

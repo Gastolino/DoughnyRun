@@ -66,7 +66,7 @@ body {
   padding: 24px;
   background: var(--page);
   color: var(--ink);
-  font: 600 20px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 700 20px/1.4 "Comic Sans MS", "Comic Neue", "Chalkboard SE", cursive;
   text-align: center;
 }
 #rotate[hidden] {
@@ -106,7 +106,7 @@ body {
 
 /* ---- Page UI above the game: menu, back button, editor ---- */
 .overlay {
-  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 700 15px/1.45 "Comic Sans MS", "Comic Neue", "Chalkboard SE", cursive;
   color: var(--ink);
 }
 .overlay button,
@@ -157,11 +157,39 @@ body {
   background: var(--page);
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
 }
-.menu-card h1 {
+.menu-card h1.title {
+  position: relative;
   margin: 0 0 4px;
-  font-size: 30px;
-  color: var(--accent);
-  text-wrap: balance;
+  line-height: 0;
+}
+.menu-card h1.title img {
+  max-width: 100%;
+  height: auto;
+  animation: title-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.title-sprinkle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 5px;
+  margin: -2.5px 0 0 -7px;
+  border-radius: 3px;
+  opacity: 0;
+  pointer-events: none;
+  animation: title-splash 900ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+@keyframes title-pop {
+  from { transform: scale(0.4); }
+  to { transform: scale(1); }
+}
+@keyframes title-splash {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 40px)) rotate(var(--r)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-card h1.title img { animation: none; }
 }
 .menu-card h2 {
   margin: 18px 0 8px;

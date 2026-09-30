@@ -6,7 +6,10 @@ export const TUNING = {
   // up and sloppy grinds or skipped sausages shift it down. Discrete gears
   // keep the level solver's search small and give the player a speed they
   // can read at a glance.
-  gears: [320, 352, 384, 416, 448, 480],
+  // The top gear is capped by the one-jump levels: above about 520 px/s a
+  // low hop clears a void that is still narrow enough to thread at 320, so a
+  // raised sausage over it could be skipped. The level tests catch this.
+  gears: [320, 360, 400, 440, 490, 520],
   gravity: 2200,
   jumpVelocity: 820,
   // Releasing jump while rising multiplies the upward speed by this factor,

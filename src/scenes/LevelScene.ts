@@ -12,7 +12,9 @@ import { coarsePointer, gameElement, isBlocked, keepAwake, onBlockedChange } fro
 import { recordFinish } from "../progress";
 import { solveAsync } from "../solveAsync";
 import { h, overlay } from "../ui";
-import { ART_HALF_WIDTH } from "./BootScene";
+import { ART_HALF_WIDTH, EYES_OFFSET, SHADES_FRAMES } from "./BootScene";
+import { FUN_FONT } from "./fonts";
+import { showRainbow } from "./rainbowText";
 import { DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
 import { COLORS, SPRINKLE_COLORS } from "./palette";
 
@@ -31,7 +33,7 @@ export interface PlayRequest {
 // every trip of the ring's own circumference, which reads as the doughnut
 // rolling along while its eyes stay fixed on the way ahead.
 const SPRINKLES = 12;
-const SPRINKLE_RX = ART_HALF_WIDTH - 12;
+const SPRINKLE_RX = ART_HALF_WIDTH - 14;
 const SPRINKLE_RY = (DOUGHNUT.outerRadius + DOUGHNUT.holeRadius) / 2 - 1;
 const ROLL_RADIUS = DOUGHNUT.outerRadius;
 
@@ -48,6 +50,10 @@ const GRADE_TEXT: Record<Grade, { label: string; color: string }> = {
 
 // The speed meter: one sparkle bit per gear, each its own colour.
 const GEAR_COLORS = [0xff5fa2, 0xffa24a, 0xffd23f, 0x6fd66f, 0x4fb3ff, 0xa87bff];
+
+// A sausage wiggles where it comes out from behind the doughnut, and keeps
+// wiggling for a moment after the doughnut has left it.
+const WIGGLE = { points: 14, amplitude: 3, wavelength: 50, speed: 12, settle: 0.7 } as const;
 
 // Bits of food thrown up where the doughnut meets the ground.
 const DUST_COLORS = [0xe0a458, 0xf3cfa6, 0xff7eb6, 0xffffff, 0x7ec8ff, 0xfff27e];
@@ -100,7 +106,14 @@ export class LevelScene extends Phaser.Scene {
   private sausages: Phaser.GameObjects.Image[] = [];
   private debug!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
-  private banner!: Phaser.GameObjects.Text;
+  private banner: Phaser.GameObjects.Image | null = null;
+  private hint!: Phaser.GameObjects.Text;
+  // Meme sunglasses that drop onto the doughnut's face in top gear.
+  private shades!: Phaser.GameObjects.Image;
+  private shadesOn = false;
+  private shadesDrop = 1; // 0 on the face, 1 lifted out of view
+  private shadesFrame = 0;
+  private wiggles = new Map<number, { rope: Phaser.GameObjects.Rope; start: number; end: number | null }>();
   private crumbs!: Phaser.GameObjects.Particles.ParticleEmitter;
   private puff!: Phaser.GameObjects.Particles.ParticleEmitter;
   // Sprinkles shed behind the doughnut, thicker in higher gears.
@@ -138,6 +151,10 @@ export class LevelScene extends Phaser.Scene {
     this.back = this.add.image(0, 0, `doughnut-back-${topping}`).setDepth(DEPTH.back);
     this.front = this.add.image(0, 0, `doughnut-front-${topping}`).setDepth(DEPTH.front);
     this.eyes = this.add.image(0, 0, "doughnut-eyes").setDepth(DEPTH.front + 2);
+    this.shades = this.add.image(0, 0, "shades-0").setDepth(DEPTH.front + 4).setVisible(false);
+    this.shadesOn = false;
+    this.shadesDrop = 1;
+    this.wiggles = new Map();
     this.sprinkles = Array.from({ length: SPRINKLES }, (_, i) =>
       this.add.image(0, 0, "sprinkle").setTint(SPRINKLE_COLORS[i % SPRINKLE_COLORS.length]),
     );
@@ -204,12 +221,19 @@ export class LevelScene extends Phaser.Scene {
     // Phones show the game at about two thirds of its size, so the text is
     // set larger there, and the hint names the finger rather than keys.
     const touch = coarsePointer();
-    const hudStyle = { fontFamily: "sans-serif", fontSize: touch ? "26px" : "20px", color: COLORS.text };
+    const hudStyle = {
+      fontFamily: FUN_FONT,
+      fontStyle: "bold",
+      fontSize: touch ? "26px" : "20px",
+      color: COLORS.text,
+      stroke: "#ffffff",
+      strokeThickness: 4,
+    };
     this.hud = this.add.text(16, 12, "Score", hudStyle).setScrollFactor(0).setDepth(DEPTH.hud);
     const line = this.hud.height;
     const speedLabel = this.add.text(16, 12 + line, "Speed", hudStyle).setScrollFactor(0).setDepth(DEPTH.hud);
     this.hudLower = this.add.text(16, 12 + line * 2, "", hudStyle).setScrollFactor(0).setDepth(DEPTH.hud);
-    const bitSize = line * 0.95;
+    const bitSize = line * 1.05;
     const firstX = 16 + speedLabel.width + bitSize * 0.8;
     const baseY = 12 + line * 1.5;
     this.gears = GEAR_COLORS.map((color, i) => {
@@ -218,47 +242,40 @@ export class LevelScene extends Phaser.Scene {
         .image(x, baseY, "glow")
         .setTint(color)
         .setBlendMode(Phaser.BlendModes.ADD)
-        .setDisplaySize(bitSize * 2.2, bitSize * 2.2)
+        .setDisplaySize(bitSize * 1.6, bitSize * 1.6)
         .setScrollFactor(0)
         .setDepth(DEPTH.hud)
         .setVisible(false);
+      // A sugar sprinkle, lying at its own slant.
       const bit = this.add
-        .image(x, baseY, "glitter")
+        .image(x, baseY, "pill")
         .setTint(color)
-        .setDisplaySize(bitSize, bitSize)
+        .setDisplaySize(bitSize * 0.95, bitSize * 0.39)
         .setScrollFactor(0)
         .setDepth(DEPTH.hud)
-        .setRotation(i * 0.7);
+        .setRotation(-0.6 + i * 0.35);
       return { bit, glow, baseY };
     });
     const again = this.options.airJumps > 0 ? (touch ? ", tap again in the air" : ", again in the air") : "";
     const hint = touch
       ? `Tap to jump, hold to jump higher${again}`
       : `Space: jump (hold for height${again})   R: restart   H: hitboxes   Esc: menu`;
-    this.add
+    // The controls, shown only until the run starts.
+    this.hint = this.add
       .text(VIEW.width - 16, 12, hint, {
-        fontFamily: "sans-serif",
-        fontSize: touch ? "20px" : "14px",
+        fontFamily: FUN_FONT,
+        fontStyle: "bold",
+        fontSize: touch ? "20px" : "15px",
         color: COLORS.text,
+        stroke: "#ffffff",
+        strokeThickness: 3,
         align: "right",
         wordWrap: { width: VIEW.width * 0.55 },
       })
       .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(DEPTH.hud);
-    this.banner = this.add
-      .text(VIEW.width / 2, VIEW.height / 2 - 60, "", {
-        fontFamily: "sans-serif",
-        fontSize: touch ? "32px" : "26px",
-        color: COLORS.text,
-        align: "center",
-        backgroundColor: "#fff1f7dd",
-        padding: { x: 18, y: 12 },
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(DEPTH.hud)
-      .setVisible(false);
+    this.banner = null;
 
     this.bindInput();
     this.watchForInterruptions();
@@ -277,6 +294,7 @@ export class LevelScene extends Phaser.Scene {
         this.demoInputs = result.inputs;
         this.restart();
         this.mode = "running";
+        this.hint.setVisible(false);
       });
     } else {
       const jumpHint = coarsePointer() ? "Hold" : "Hold Space";
@@ -439,7 +457,8 @@ export class LevelScene extends Phaser.Scene {
         this.holdPointer = null;
         this.mode = "running";
         this.updatesSinceStart = 0;
-        this.banner.setVisible(false);
+        this.hideBanner();
+        this.hint.setVisible(false);
         keepAwake();
         break;
       case "ended": {
@@ -471,9 +490,13 @@ export class LevelScene extends Phaser.Scene {
     this.accumulator = 0;
     this.stepCount = 0;
     this.pressLatch = false;
-    this.banner.setVisible(false);
+    this.hideBanner();
     this.setDoughnutVisible(true);
-    this.sausages.forEach((g) => g.setAlpha(1));
+    this.sausages.forEach((g) => g.setAlpha(1).setVisible(true));
+    this.wiggles.forEach((w) => w.rope.destroy());
+    this.wiggles.clear();
+    this.shadesOn = false;
+    this.shadesDrop = 1;
     this.cameras.main.setScroll(this.runner.x - VIEW.playerScreenX, 0);
     this.render(1, 0);
   }
@@ -481,10 +504,11 @@ export class LevelScene extends Phaser.Scene {
   private onEvent(e: RunnerEvent): void {
     switch (e.type) {
       case "jump":
-        this.squash(0.8, 1.2);
+        this.pushOff(1);
+        this.dust.explode(10, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "airJump":
-        this.squash(0.75, 1.25);
+        this.pushOff(0.8);
         this.puff.explode(14, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "land":
@@ -494,18 +518,21 @@ export class LevelScene extends Phaser.Scene {
         break;
       case "grindStart":
         this.sausages[e.index].setAlpha(0.85);
+        this.startWiggle(e.index);
         break;
       case "grindEnd": {
         this.sausages[e.index].setAlpha(0.5);
+        const w = this.wiggles.get(e.index);
+        if (w) w.end = this.time.now;
         const g = GRADE_TEXT[e.grade];
         const chain = e.chain > 1 ? `  x${e.chain} chain` : "";
         const combo = e.airCombo ? `\nAIR COMBO x${e.airCombo}!` : "";
-        this.popText(`${g.label} +${e.points}${chain}${combo}`, g.color, e.grade === "perfect" || e.airCombo > 0);
+        this.popText(`${g.label} +${e.points}${chain}${combo}`, e.grade === "perfect" || e.airCombo > 0);
         break;
       }
       case "skip":
         this.sausages[e.index].setAlpha(0.3);
-        this.popText("Skipped: chain lost", GRADE_TEXT.sloppy.color, false);
+        this.popText("Skipped: chain lost", false);
         break;
       case "die":
         this.deaths += 1;
@@ -578,6 +605,8 @@ export class LevelScene extends Phaser.Scene {
     this.hud.setText(`Score ${s.score}${chain}`);
     this.hudLower.setText(`${air.trim() ? `${air.trim()}   ` : ""}Deaths ${this.deaths}`);
     this.animateSpeedMeter(s.gear, deltaMs);
+    this.updateShades(s.gear, deltaMs);
+    this.updateWiggles(x);
 
     // Food flies up from the point of contact while the doughnut rolls.
     const rolling = this.mode === "running" && s.grounded && !s.dead;
@@ -626,7 +655,14 @@ export class LevelScene extends Phaser.Scene {
     // Follow the squash and stretch of the ring itself.
     const sx = this.back.scaleX;
     const sy = this.back.scaleY;
-    this.eyes.setPosition(x + 14 * sx, y - 33 * sy).setScale(sx, sy);
+    this.eyes.setPosition(x + EYES_OFFSET.x * sx, y + EYES_OFFSET.y * sy).setScale(sx, sy);
+    // The sunglasses sit over the eyes, dropping in from above.
+    const lift = this.shadesDrop * 140;
+    this.shades
+      .setPosition(x + (EYES_OFFSET.x + 2) * sx, y + (EYES_OFFSET.y + 1) * sy - lift)
+      .setScale(sx * 1.5, sy * 1.5)
+      .setAlpha(1 - this.shadesDrop * 0.6)
+      .setVisible(this.shadesDrop < 1 && this.eyes.visible);
     const roll = x / ROLL_RADIUS;
     this.sprinkles.forEach((sprinkle, i) => {
       const a = roll + (i / SPRINKLES) * Math.PI * 2;
@@ -640,6 +676,82 @@ export class LevelScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * The doughnut pushes off: squashed flat against the ground for an instant,
+   * then flung tall, then settling back to its shape.
+   */
+  private pushOff(strength: number): void {
+    const targets = [this.back, this.front];
+    this.tweens.killTweensOf(targets);
+    targets.forEach((t) => t.setScale(1 + 0.4 * strength, 1 - 0.38 * strength));
+    this.tweens.chain({
+      targets,
+      tweens: [
+        { scaleX: 1 - 0.28 * strength, scaleY: 1 + 0.4 * strength, duration: 90, ease: "Quad.easeOut" },
+        { scaleX: 1, scaleY: 1, duration: 220, ease: "Back.easeOut" },
+      ],
+    });
+  }
+
+  /** Puts the sunglasses on in top gear and takes them off below it. */
+  private updateShades(gear: number, deltaMs: number): void {
+    // They stay on through a finish at top speed, and come off in a crash.
+    const top = gear === TUNING.gears.length - 1 && !this.runner.dead;
+    if (top !== this.shadesOn) {
+      this.shadesOn = top;
+      this.tweens.killTweensOf(this);
+      this.tweens.add({
+        targets: this,
+        shadesDrop: top ? 0 : 1,
+        duration: top ? 420 : 300,
+        ease: top ? "Bounce.easeOut" : "Quad.easeIn",
+      });
+    }
+    this.shadesFrame = (this.shadesFrame + deltaMs / 70) % SHADES_FRAMES;
+    this.shades.setTexture(`shades-${Math.floor(this.shadesFrame)}`);
+  }
+
+  /** Swaps a sausage's image for a bendable copy that can wiggle. */
+  private startWiggle(index: number): void {
+    const image = this.sausages[index];
+    if (this.wiggles.has(index) || !(this.game.renderer instanceof Phaser.Renderer.WebGL.WebGLRenderer)) return;
+    const s = this.level.sausages[index];
+    const points = Array.from({ length: WIGGLE.points }, (_, i) => new Phaser.Math.Vector2((i / (WIGGLE.points - 1)) * s.length, 0));
+    const rope = this.add.rope(s.x, s.y, image.texture.key, undefined, points, true).setDepth(DEPTH.sausage);
+    rope.setAlpha(image.alpha);
+    image.setVisible(false);
+    this.wiggles.set(index, { rope, start: this.time.now, end: null });
+  }
+
+  /**
+   * The part of a threaded sausage behind the doughnut ripples in a wave that
+   * runs away from it; once the doughnut has left, the ripple dies down and
+   * the sausage goes back to a plain image.
+   */
+  private updateWiggles(doughnutX: number): void {
+    const t = this.time.now / 1000;
+    const exit = doughnutX - ART_HALF_WIDTH * 0.6;
+    for (const [index, w] of this.wiggles) {
+      const s = this.level.sausages[index];
+      const image = this.sausages[index];
+      const fade = w.end === null ? 1 : 1 - (this.time.now - w.end) / 1000 / WIGGLE.settle;
+      if (fade <= 0) {
+        w.rope.destroy();
+        image.setVisible(true);
+        this.wiggles.delete(index);
+        continue;
+      }
+      w.rope.setAlpha(image.alpha);
+      for (const p of w.rope.points) {
+        const behind = exit - (s.x + p.x);
+        // Only the part that has come out wiggles, growing over a short run.
+        const ramp = Phaser.Math.Clamp(behind / 30, 0, 1);
+        p.y = ramp * fade * WIGGLE.amplitude * Math.sin((behind / WIGGLE.wavelength) * Math.PI * 2 - t * WIGGLE.speed);
+      }
+      w.rope.setDirty();
+    }
+  }
+
   private squash(sx: number, sy: number): void {
     const targets = [this.back, this.front];
     this.tweens.killTweensOf(targets);
@@ -647,23 +759,32 @@ export class LevelScene extends Phaser.Scene {
     this.tweens.add({ targets, scaleX: 1, scaleY: 1, duration: 160, ease: "Quad.easeOut" });
   }
 
-  private popText(text: string, color: string, big: boolean): void {
+  private popText(text: string, big: boolean): void {
     // Pinned to the screen, since the camera keeps the doughnut in one place.
-    const x = VIEW.playerScreenX;
+    const x = VIEW.playerScreenX + 40;
     // Kept below the score display, which the text drifts towards as it fades.
-    const y = Math.max(150, this.runner.y - this.cameras.main.scrollY - DOUGHNUT.outerRadius - 16);
-    const size = (big ? 28 : 20) + (coarsePointer() ? 6 : 0);
-    const t = this.add
-      .text(x, y, text, { fontFamily: "sans-serif", fontSize: `${size}px`, color, fontStyle: "bold", align: "center" })
-      .setOrigin(0.5, 1)
-      .setScrollFactor(0)
-      .setDepth(DEPTH.fx);
-    if (big) this.tweens.add({ targets: t, scale: { from: 1.4, to: 1 }, duration: 180 });
-    this.tweens.add({ targets: t, y: y - 50, alpha: 0, delay: 300, duration: 700, onComplete: () => t.destroy() });
+    const size = (big ? 26 : 19) + (coarsePointer() ? 6 : 0);
+    const y = Math.max(170, this.runner.y - this.cameras.main.scrollY - DOUGHNUT.outerRadius - 40);
+    const t = showRainbow(this, x, y, text, size, DEPTH.fx, big);
+    const key = t.texture.key;
+    const done = () => {
+      t.destroy();
+      // Scores make most call-outs unique, so their textures are not kept.
+      const inUse = this.children.list.some((o) => o instanceof Phaser.GameObjects.Image && o.texture.key === key);
+      if (!inUse) this.textures.remove(key);
+    };
+    this.tweens.add({ targets: t, y: y - 50, alpha: 0, delay: 500, duration: 700, onComplete: done });
   }
 
   private showBanner(text: string): void {
-    this.banner.setText(text).setVisible(true);
+    this.hideBanner();
+    const size = coarsePointer() ? 30 : 26;
+    this.banner = showRainbow(this, VIEW.width / 2, VIEW.height / 2 - 50, text, size, DEPTH.hud);
+  }
+
+  private hideBanner(): void {
+    this.banner?.destroy();
+    this.banner = null;
   }
 
   private drawHitboxes(x: number, y: number): void {

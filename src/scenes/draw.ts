@@ -99,11 +99,21 @@ function makeMountain(scene: Phaser.Scene, m: MountainStyle): void {
   ctx.fillStyle = css(m.dough);
   ctx.fill();
 
-  // Glaze: a band inside the rim whose inner edge drips towards the middle.
-  const outer = R - 16;
+  // Glaze: a band inside the rim. Its outer edge wanders in soft waves, the
+  // way poured glaze stops short of the rim; its inner edge drips inwards.
+  const outer = R - 18;
   const inner = R * GLAZE_INNER;
+  const wavePhase = rand() * Math.PI * 2;
+  const edge = (a: number): number => outer + 6 * Math.sin(a * 17 + wavePhase) + 3 * Math.sin(a * 7 - wavePhase);
   ctx.beginPath();
-  ctx.arc(c, c, outer, 0, Math.PI * 2);
+  for (let i = 0; i <= 360; i++) {
+    const a = (i / 360) * Math.PI * 2;
+    const x = c + Math.cos(a) * edge(a);
+    const y = c + Math.sin(a) * edge(a);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
   const drips = 26;
   for (let i = drips; i >= 0; i--) {
     const a = (i / drips) * Math.PI * 2;

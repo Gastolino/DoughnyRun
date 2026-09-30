@@ -97,6 +97,14 @@ On a phone the whole screen is the jump button, including the bars beside
 the game. The game waits for a first tap, pauses when the phone locks or the
 page is hidden, and asks to be turned sideways in portrait.
 
+## Look and feel
+
+Lettering is Comic Sans where the device has it and Comic Neue elsewhere
+(bundled from `@fontsource/comic-neue`, under the SIL Open Font License).
+Banners and call-outs use rainbow letters with a rainbow outline and land
+with a splash of sugar sprinkles. In top gear the doughnut puts on
+rainbow-shimmer sunglasses.
+
 ## Single-page build
 
 `npm run build:artifact` writes `dist-artifact/doughny-run.html`: one page

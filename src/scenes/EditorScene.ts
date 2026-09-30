@@ -17,6 +17,7 @@ import { VIEW } from "../logic/tuning";
 import { loadDraft, saveCustomLevel, saveDraft } from "../progress";
 import { solveAsync } from "../solveAsync";
 import { copyText, h, overlay } from "../ui";
+import { EYES_OFFSET } from "./BootScene";
 import { DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
 
 /** Opens the editor on a given level, or on the draft left from last time. */
@@ -236,7 +237,7 @@ export class EditorScene extends Phaser.Scene {
     const ref = [
       this.add.image(START_X, RUN_HEIGHT, `doughnut-back-${topping}`),
       this.add.image(START_X, RUN_HEIGHT, `doughnut-front-${topping}`),
-      this.add.image(START_X + 14, RUN_HEIGHT - 33, "doughnut-eyes"),
+      this.add.image(START_X + EYES_OFFSET.x, RUN_HEIGHT + EYES_OFFSET.y, "doughnut-eyes"),
     ];
     ref.forEach((o) => o.setDepth(DEPTH.front).setAlpha(0.9));
     this.drawn.push(...ref);
