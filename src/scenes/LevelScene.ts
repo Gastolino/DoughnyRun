@@ -46,6 +46,12 @@ const GRADE_TEXT: Record<Grade, { label: string; color: string }> = {
   sloppy: { label: "Sloppy", color: "#8a7a80" },
 };
 
+// The speed meter: one sparkle bit per gear, each its own colour.
+const GEAR_COLORS = [0xff5fa2, 0xffa24a, 0xffd23f, 0x6fd66f, 0x4fb3ff, 0xa87bff];
+
+// Bits of food thrown up where the doughnut meets the ground.
+const DUST_COLORS = [0xe0a458, 0xf3cfa6, 0xff7eb6, 0xffffff, 0x7ec8ff, 0xfff27e];
+
 // A press this soon after a crash or the finish is ignored, so that a late
 // tap does not wipe the message before the player has read it.
 const END_LOCKOUT_MS = 400;
@@ -99,6 +105,11 @@ export class LevelScene extends Phaser.Scene {
   private puff!: Phaser.GameObjects.Particles.ParticleEmitter;
   // Sprinkles shed behind the doughnut, thicker in higher gears.
   private trail!: Phaser.GameObjects.Particles.ParticleEmitter;
+  // Sprinkles, crumbs and glitter kicked up behind the point of contact.
+  private dust!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private dustGlitter!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private gears: { bit: Phaser.GameObjects.Image; glow: Phaser.GameObjects.Image; baseY: number }[] = [];
+  private hudLower!: Phaser.GameObjects.Text;
   private jumpKeys: Phaser.Input.Keyboard.Key[] = [];
 
   constructor() {
@@ -164,14 +175,62 @@ export class LevelScene extends Phaser.Scene {
         frequency: -1,
       })
       .setDepth(DEPTH.trail);
+    const kick = {
+      speedX: { min: -260, max: -60 },
+      speedY: { min: -280, max: -90 },
+      gravityY: 950,
+      rotate: { min: 0, max: 360 },
+      frequency: -1,
+    };
+    this.dust = this.add
+      .particles(0, 0, "sprinkle", {
+        ...kick,
+        lifespan: 520,
+        scale: { start: 1, end: 0.4 },
+        alpha: { start: 1, end: 0 },
+        tint: DUST_COLORS,
+      })
+      .setDepth(DEPTH.front + 3);
+    this.dustGlitter = this.add
+      .particles(0, 0, "glitter", {
+        ...kick,
+        lifespan: 380,
+        scale: { start: 0.7, end: 0 },
+        tint: [0xffffff, 0xfff2a8, 0xffc4e1],
+        blendMode: Phaser.BlendModes.ADD,
+      })
+      .setDepth(DEPTH.front + 3);
 
     // Phones show the game at about two thirds of its size, so the text is
     // set larger there, and the hint names the finger rather than keys.
     const touch = coarsePointer();
-    this.hud = this.add
-      .text(16, 12, "", { fontFamily: "sans-serif", fontSize: touch ? "26px" : "20px", color: COLORS.text })
-      .setScrollFactor(0)
-      .setDepth(DEPTH.hud);
+    const hudStyle = { fontFamily: "sans-serif", fontSize: touch ? "26px" : "20px", color: COLORS.text };
+    this.hud = this.add.text(16, 12, "Score", hudStyle).setScrollFactor(0).setDepth(DEPTH.hud);
+    const line = this.hud.height;
+    const speedLabel = this.add.text(16, 12 + line, "Speed", hudStyle).setScrollFactor(0).setDepth(DEPTH.hud);
+    this.hudLower = this.add.text(16, 12 + line * 2, "", hudStyle).setScrollFactor(0).setDepth(DEPTH.hud);
+    const bitSize = line * 0.95;
+    const firstX = 16 + speedLabel.width + bitSize * 0.8;
+    const baseY = 12 + line * 1.5;
+    this.gears = GEAR_COLORS.map((color, i) => {
+      const x = firstX + i * bitSize * 1.05;
+      const glow = this.add
+        .image(x, baseY, "glow")
+        .setTint(color)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDisplaySize(bitSize * 2.2, bitSize * 2.2)
+        .setScrollFactor(0)
+        .setDepth(DEPTH.hud)
+        .setVisible(false);
+      const bit = this.add
+        .image(x, baseY, "glitter")
+        .setTint(color)
+        .setDisplaySize(bitSize, bitSize)
+        .setScrollFactor(0)
+        .setDepth(DEPTH.hud)
+        .setRotation(i * 0.7);
+      return { bit, glow, baseY };
+    });
     const again = this.options.airJumps > 0 ? (touch ? ", tap again in the air" : ", again in the air") : "";
     const hint = touch
       ? `Tap to jump, hold to jump higher${again}`
@@ -430,6 +489,8 @@ export class LevelScene extends Phaser.Scene {
         break;
       case "land":
         this.squash(1.25, 0.8);
+        this.dust.explode(16, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
+        this.dustGlitter.explode(6, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "grindStart":
         this.sausages[e.index].setAlpha(0.85);
@@ -509,19 +570,52 @@ export class LevelScene extends Phaser.Scene {
     this.front.setPosition(x, y);
     this.placeEyesAndSprinkles(x, y);
 
-    const gears = TUNING.gears.length;
-    const bar = "■".repeat(s.gear + 1) + "□".repeat(gears - s.gear - 1);
     const chain = s.chain > 1 ? `   Chain x${s.chain}` : "";
     const air =
       this.options.airJumps > 0
         ? `   Air jump ${"●".repeat(s.airJumpsLeft)}${"○".repeat(this.options.airJumps - s.airJumpsLeft)}`
         : "";
-    this.hud.setText(`Score ${s.score}${chain}\nSpeed ${bar}${air}   Deaths ${this.deaths}`);
+    this.hud.setText(`Score ${s.score}${chain}`);
+    this.hudLower.setText(`${air.trim() ? `${air.trim()}   ` : ""}Deaths ${this.deaths}`);
+    this.animateSpeedMeter(s.gear, deltaMs);
+
+    // Food flies up from the point of contact while the doughnut rolls.
+    const rolling = this.mode === "running" && s.grounded && !s.dead;
+    const rate = rolling ? Math.max(10, 40 - s.gear * 5) : -1;
+    this.dust.frequency = rate;
+    this.dustGlitter.frequency = rolling ? rate * 3 : -1;
+    this.dust.setPosition(x - 4, y + DOUGHNUT.outerRadius - 2);
+    this.dustGlitter.setPosition(x - 4, y + DOUGHNUT.outerRadius - 2);
     this.trail.frequency = this.mode === "running" && s.gear >= 2 ? 120 / s.gear : -1;
     this.trail.setPosition(x - 10, y);
 
     this.debug.clear();
     if (this.showHitboxes) this.drawHitboxes(x, y);
+  }
+
+  /**
+   * The lit bits turn and bob faster in higher gears. In top gear they glow
+   * and a wave runs along them, one bit rising after another, on a loop.
+   */
+  private animateSpeedMeter(gear: number, deltaMs: number): void {
+    const t = this.time.now / 1000;
+    const top = gear === TUNING.gears.length - 1;
+    const dt = deltaMs / 1000;
+    this.gears.forEach(({ bit, glow, baseY }, i) => {
+      const lit = i <= gear;
+      const spin = lit ? 0.5 + gear * 0.9 : 0.15;
+      bit.rotation += spin * dt;
+      let y: number;
+      if (top) {
+        y = baseY - bit.displayHeight * 0.45 * Math.max(0, Math.sin(t * 5 - i * 0.75));
+      } else {
+        const amp = lit ? 1 + gear * 0.7 : 0.4;
+        y = baseY + Math.sin(t * (1.2 + gear * 0.9) + i * 0.9) * amp;
+      }
+      bit.setY(y).setAlpha(lit ? 1 : 0.28);
+      glow.setVisible(top).setY(y);
+      if (top) glow.setAlpha(0.55 + 0.35 * Math.sin(t * 6 - i * 0.75));
+    });
   }
 
   private setDoughnutVisible(visible: boolean): void {

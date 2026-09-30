@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { TOPPING_IDS } from "../logic/toppings";
 import type { ToppingId } from "../logic/toppings";
 import { DOUGHNUT } from "../logic/tuning";
+import { drawStar } from "./draw";
 import { COLORS, css } from "./palette";
 
 // Draws the greybox textures at start-up, so the game needs no image files.
@@ -30,6 +31,7 @@ export class BootScene extends Phaser.Scene {
     this.makeEyes();
     this.makeCrumb();
     this.makeSprinkle();
+    this.makeGlitter();
     this.scene.start(window.location.hash === "#editor" ? "editor" : "menu");
   }
 
@@ -115,6 +117,26 @@ export class BootScene extends Phaser.Scene {
       ctx.fill();
     }
     tex.refresh();
+  }
+
+  /** A white four-pointed glint, and a soft round glow, both tinted in use. */
+  private makeGlitter(): void {
+    const star = this.textures.createCanvas("glitter", 16, 16);
+    if (star) {
+      drawStar(star.getContext(), 8, 8, 7.5);
+      star.refresh();
+    }
+    const glow = this.textures.createCanvas("glow", 48, 48);
+    if (glow) {
+      const g = glow.getContext();
+      const grad = g.createRadialGradient(24, 24, 0, 24, 24, 24);
+      grad.addColorStop(0, "rgba(255,255,255,0.9)");
+      grad.addColorStop(0.4, "rgba(255,255,255,0.35)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 48, 48);
+      glow.refresh();
+    }
   }
 
   private makeSprinkle(): void {
