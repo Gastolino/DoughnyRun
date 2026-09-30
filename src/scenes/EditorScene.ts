@@ -310,9 +310,9 @@ export class EditorScene extends Phaser.Scene {
     this.drawn.forEach((o) => o.destroy());
     const level = buildLevel(this.file);
     this.drawn = [
-      ...drawBackdrop(this, this.file.length),
+      ...drawBackdrop(this, this.file.length, level.theme),
       ...drawGround(this, level),
-      ...level.sausages.map((s) => drawSausage(this, s)),
+      ...level.sausages.map((s) => drawSausage(this, s, level.theme)),
       drawFinish(this, this.file.length),
     ];
     // Doughnut at the start line, as a size reference.

@@ -176,10 +176,10 @@ export class LevelScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setScroll(0, 0);
-    addSkySprinkles(this);
-    drawBackdrop(this, this.level.length);
+    if (this.level.theme === "candy") addSkySprinkles(this);
+    drawBackdrop(this, this.level.length, this.level.theme);
     drawGround(this, this.level);
-    this.sausages = this.level.sausages.map((s) => drawSausage(this, s));
+    this.sausages = this.level.sausages.map((s) => drawSausage(this, s, this.level.theme));
     drawFinish(this, this.level.length);
     this.boss = this.level.chaser ? new DentureChaser(this, this.level) : null;
 
