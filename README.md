@@ -12,11 +12,9 @@ onto a stick. While the doughnut overlaps a sausage, the sausage's whole
 thickness must stay inside the hole's vertical span; touching the dough is a
 crash.
 
-Raised sausages hang over voids. Running underneath drops the doughnut into
-the void, and the sausage hangs too high to jump over, so the only way across
-is through the hole. The level tests prove this for every such sausage.
-Sausages over solid ground are optional: skipping one costs the chain and a
-gear.
+Every sausage must go through the hole. A doughnut that passes one without
+threading it, over it or under it, is arrested: an officer's arm in a navy
+sleeve with gold buttons rises from below and carries it away.
 
 ## Grinding, score and speed
 
@@ -75,8 +73,8 @@ next one, and a new topping comes with the level that first needs it.
 
 In top gear the doughnut wears its sunglasses, and they absorb one crash
 into a sausage: the doughnut smashes through it and drops to first gear.
-Falling into a void or hitting a cliff still ends the run. The level tests prove
-sausages cannot be skipped without spending that free crash.
+A smashed sausage counts as dealt with. Falling into a void, hitting a cliff
+or skipping a sausage still ends the run.
 
 Threading a second sausage before touching the ground is an air combo: that
 grind's points are multiplied by the number of grinds in the flight.
@@ -86,10 +84,8 @@ Levels are JSON files in `src/levels`, listed in order in
 `src/levels/format.ts`: a name, a length, a topping and a list of elements,
 each with a `type`: `gap`, `sausage`, `ramp`, `boost` or `hills`. The tests check
 every listed level with the solver: it must be finishable with its topping,
-every sausage must be threadable in one run, a level with a new topping must
-be impossible without it, and on a one-jump level no sausage over a void may
-be avoidable. Each level has its own test file in `tests/levels`, so the
-levels are checked side by side.
+which means threading every sausage, and a level with a new topping must be
+impossible without it. Each level has its own test file in `tests/levels`.
 
 ## Level editor
 
@@ -111,8 +107,8 @@ Open it from the menu, or add `#editor` to the address. Tools:
 Positions snap to 10 px (hold Shift for 1 px), and the bottom bar takes exact
 numbers. Dashed guides show how high the hole reaches when rolling, at the
 top of one jump and at the top of a double jump. **Check** asks the solver
-whether the level can be finished and whether every sausage can be threaded
-in one run, and marks where it got stuck with a red line. **Play** and
+whether the level can be finished, threading every sausage, and marks where
+it got stuck with a red line. **Play** and
 **Watch solver** test the level, and **Save** adds it to Your levels in the
 menu. The editor keeps a draft between visits and has undo (Ctrl+Z) and redo.
 

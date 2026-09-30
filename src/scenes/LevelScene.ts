@@ -71,7 +71,7 @@ const DEATH_TEXT: Record<DeathCause, string> = {
   sausage: "Bonk! The sausage hit the dough.",
   fell: "Down the hole you go.",
   wall: "Splat against the cliff.",
-  missed: "Missed a sausage.",
+  arrested: "Busted! Every sausage goes through the hole.",
 };
 
 // Draws the pure simulation in src/logic and turns keyboard, mouse and touch
@@ -124,7 +124,12 @@ export class LevelScene extends Phaser.Scene {
   // Crumbs thrown off by each bite when the doughnut is eaten, in screen space.
   private biteCrumbs!: Phaser.GameObjects.Particles.ParticleEmitter;
   // The doughnut being eaten after a crash, and the timers driving the bites.
-  private eaten: { image: Phaser.GameObjects.RenderTexture; timers: Phaser.Time.TimerEvent[] } | null = null;
+  private eaten: {
+    image: Phaser.GameObjects.RenderTexture;
+    timers: Phaser.Time.TimerEvent[];
+    /** Anything else the death brought on screen, such as the officer's arm. */
+    extras: Phaser.GameObjects.GameObject[];
+  } | null = null;
   // The victory lap at the flag: the doughnut's stand-in image, its sprinkle
   // trail, and the textures drawn for it.
   private victory: { image: Phaser.GameObjects.Image; trail: Phaser.GameObjects.Particles.ParticleEmitter; keys: string[] } | null = null;
@@ -577,10 +582,6 @@ export class LevelScene extends Phaser.Scene {
         this.popText(`${g.label} +${e.points}${chain}${combo}`, e.grade === "perfect" || e.airCombo > 0);
         break;
       }
-      case "skip":
-        this.sausages[e.index].setAlpha(0.3);
-        this.popText("Skipped: chain lost", false, 0);
-        break;
       case "save":
         this.onSave(e);
         break;
@@ -588,7 +589,11 @@ export class LevelScene extends Phaser.Scene {
         this.deaths += 1;
         this.cameras.main.shake(140, 0.006);
         this.end();
-        this.eatDoughnut(() => this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`, 0));
+        {
+          const banner = () => this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`, 0);
+          if (e.cause === "arrested") this.arrestDoughnut(banner);
+          else this.eatDoughnut(banner);
+        }
         break;
       case "finish": {
         this.end();
@@ -750,11 +755,10 @@ export class LevelScene extends Phaser.Scene {
   }
 
   /**
-   * After a crash the doughnut hops up into the middle of the screen and is
-   * eaten away: bite after bite takes a scalloped chunk out of it, each
-   * throwing crumbs, until nothing is left. Then the message appears.
+   * Swaps the doughnut for a snapshot of it as it looked, pinned to the
+   * screen, for a death animation to move about.
    */
-  private eatDoughnut(done: () => void): void {
+  private freezeDoughnut(): { image: Phaser.GameObjects.RenderTexture; startX: number; startY: number; W: number; H: number } {
     this.stopEating();
     const cam = this.cameras.main;
     const W = 120;
@@ -766,7 +770,7 @@ export class LevelScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(DEPTH.hud - 2);
-    // A snapshot of the doughnut as it looked: both halves, sprinkles, eyes.
+    // Both halves, sprinkles and eyes.
     const topping = this.level.topping;
     image.stamp(`doughnut-back-${topping}`, undefined, W / 2, H / 2);
     image.stamp(`doughnut-front-${topping}`, undefined, W / 2, H / 2);
@@ -779,8 +783,79 @@ export class LevelScene extends Phaser.Scene {
     }
     image.stamp("doughnut-eyes", undefined, W / 2 + EYES_OFFSET.x, H / 2 + EYES_OFFSET.y);
     this.setDoughnutVisible(false);
+    return { image, startX, startY, W, H };
+  }
+
+  /**
+   * After a skipped sausage the law arrives: an officer's arm in a navy
+   * sleeve with gold buttons rises from below, scoops the doughnut up in its
+   * palm and carries it away off the top of the screen, under flashing
+   * red and blue lights.
+   */
+  private arrestDoughnut(done: () => void): void {
+    const { image, startX, startY } = this.freezeDoughnut();
     const timers: Phaser.Time.TimerEvent[] = [];
-    this.eaten = { image, timers };
+    const palmY = startY + DOUGHNUT.outerRadius;
+    const arm = this.add
+      .image(startX, VIEW.height + 320, "cop-arm")
+      .setOrigin(80 / 160, 64 / 300)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.hud - 3);
+    this.eaten = { image, timers, extras: [arm] };
+
+    // Red and blue, turn about, while the arrest lasts.
+    for (let i = 0; i < 6; i++) {
+      timers.push(
+        this.time.delayedCall(i * 230, () => {
+          const red = i % 2 === 0;
+          this.cameras.main.flash(180, red ? 255 : 60, red ? 50 : 110, red ? 60 : 255, true);
+        }),
+      );
+    }
+    this.tweens.chain({
+      targets: arm,
+      tweens: [
+        // Up from below, to the doughnut's underside.
+        { y: palmY, duration: 380, ease: "Back.easeOut" },
+        // The doughnut is caught: a jolt, and a lift together.
+        {
+          y: palmY - 18,
+          duration: 140,
+          ease: "Quad.easeOut",
+          onStart: () => {
+            this.tweens.add({ targets: image, scaleX: 1.15, scaleY: 0.85, duration: 90, yoyo: true });
+            this.tweens.add({ targets: image, y: startY - 18, duration: 140, ease: "Quad.easeOut" });
+          },
+        },
+        // Away, up and off the screen, with a little sway.
+        {
+          y: -260,
+          x: startX + 120,
+          rotation: 0.18,
+          duration: 900,
+          delay: 220,
+          ease: "Sine.easeIn",
+          onUpdate: () => {
+            image.setPosition(arm.x, arm.y - DOUGHNUT.outerRadius).setRotation(arm.rotation);
+          },
+          onComplete: () => {
+            this.stopEating();
+            done();
+          },
+        },
+      ],
+    });
+  }
+
+  /**
+   * After a crash the doughnut hops up into the middle of the screen and is
+   * eaten away: bite after bite takes a scalloped chunk out of it, each
+   * throwing crumbs, until nothing is left. Then the message appears.
+   */
+  private eatDoughnut(done: () => void): void {
+    const { image, startX, startY, W, H } = this.freezeDoughnut();
+    const timers: Phaser.Time.TimerEvent[] = [];
+    this.eaten = { image, timers, extras: [] };
 
     // The hop: an arc up and over to the centre, growing as it comes.
     const endX = VIEW.width / 2;
@@ -986,6 +1061,10 @@ export class LevelScene extends Phaser.Scene {
     this.eaten.timers.forEach((t) => t.remove(false));
     this.tweens.killTweensOf(this.eaten.image);
     this.eaten.image.destroy();
+    this.eaten.extras.forEach((o) => {
+      this.tweens.killTweensOf(o);
+      o.destroy();
+    });
     this.eaten = null;
   }
 

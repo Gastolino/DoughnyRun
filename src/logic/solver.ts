@@ -1,7 +1,7 @@
 import { cloneRunner, createRunner, PLAIN, speedOf, stepRunner } from "./runner";
-import type { RunnerEvent, RunnerOptions, RunnerState } from "./runner";
+import type { RunnerOptions, RunnerState } from "./runner";
 import { slopeAt } from "./terrain";
-import { DOUGHNUT, TUNING, VIEW } from "./tuning";
+import { DOUGHNUT, TUNING } from "./tuning";
 import type { LevelData } from "./types";
 
 // Searches for an input sequence that clears a level. It explores depth
@@ -127,13 +127,17 @@ export class NumberSet {
 }
 
 /**
- * The rarer parts of a state, present only mid-grind or after the free
- * crash, as text. A grind in progress will change the speed when it ends.
+ * The rarer parts of a state, present only mid-grind, over a sausage already
+ * threaded, or after the free crash, as text. A grind in progress will
+ * change the speed when it ends.
  */
 function extraKey(s: RunnerState): string | null {
-  if (s.grinds.length === 0 && s.smashed.length === 0) return null;
+  // Sausages threaded but not yet left behind decide whether the doughnut
+  // is arrested when it passes them.
+  const pending = s.threaded.filter((i) => i >= s.nextSausage);
+  if (s.grinds.length === 0 && s.smashed.length === 0 && pending.length === 0) return null;
   const grinds = s.grinds.map((g) => `${g.index}:${Math.round((g.offsetSum / g.steps) * 20)}`).join(";");
-  return `${grinds}|${s.smashed.join(";")}`;
+  return `${grinds}|${s.smashed.join(";")}|${pending.join(";")}`;
 }
 
 /** The states a search has seen. */
@@ -141,8 +145,8 @@ class Visited {
   private seen: NumberSet;
   private seenRare = new Set<string>();
 
-  constructor(capacity?: number) {
-    this.seen = new NumberSet(capacity);
+  constructor() {
+    this.seen = new NumberSet();
   }
 
   /** Records a state; false when an identical one was already seen. */
@@ -232,17 +236,11 @@ function jumpIsIdle(level: LevelData, s: RunnerState, options: RunnerOptions): b
   return true;
 }
 
-export interface SearchStart {
-  state: RunnerState;
-  held: boolean;
-}
-
-export function solveLevel(level: LevelData, options: RunnerOptions = PLAIN, from?: SearchStart): SolveResult {
-  const start = from ? cloneRunner(from.state) : createRunner(level, options);
-  const stack: Node[] = [{ state: start, held: from?.held ?? false, input: { held: false, pressed: false }, parent: null }];
+export function solveLevel(level: LevelData, options: RunnerOptions = PLAIN): SolveResult {
+  const start = createRunner(level, options);
+  const stack: Node[] = [{ state: start, held: false, input: { held: false, pressed: false }, parent: null }];
   let furthestX = start.x;
-  // A search from a given state is short, so it starts with a small table.
-  const visited = new Visited(from ? 1 << 10 : 1 << 20);
+  const visited = new Visited();
 
   while (stack.length > 0) {
     const node = stack.pop() as Node;
@@ -276,55 +274,4 @@ function trace(node: Node): DecisionInput[] {
   const out: DecisionInput[] = [];
   for (let n: Node | null = node; n?.parent; n = n.parent) out.push(n.input);
   return out.reverse();
-}
-
-/**
- * Finds which of the given sausages the doughnut can pass without threading
- * and still finish the level. It explores every state the level allows once,
- * noting each doughnut that passes one of the sausages untouched, and asks
- * whether that doughnut can go on to finish. One exploration answers for all
- * the sausages at once, where a search per sausage would repeat the same
- * ground again and again.
- */
-export function findBypasses(level: LevelData, options: RunnerOptions, indices: readonly number[]): Set<number> {
-  const wanted = new Set(indices);
-  const bypassed = new Set<number>();
-  // Past the last of the sausages, nothing more can be learned.
-  const last = Math.max(-1, ...indices);
-  const start = createRunner(level, options);
-  const stack: SearchStart[] = [{ state: start, held: false }];
-  const visited = new Visited();
-
-  while (stack.length > 0 && bypassed.size < wanted.size) {
-    const node = stack.pop()!;
-    const s0 = node.state;
-    for (const input of [true, false]) {
-      const pressed = input && !node.held;
-      if (pressed && pointlessPress(level, s0, options)) continue;
-      const state = cloneRunner(s0);
-      let skipped: number[] | null = null;
-      for (let i = 0; i < STEPS_PER_DECISION; i++) {
-        const events: RunnerEvent[] = stepRunner(state, { held: input, pressed: pressed && i === 0 }, level, options);
-        for (const e of events) {
-          if (e.type === "skip" && wanted.has(e.index) && !bypassed.has(e.index)) (skipped ??= []).push(e.index);
-        }
-        if (state.dead || state.finished) break;
-      }
-      if (state.dead) continue;
-      const child = { state, held: input && state.canCutJump };
-      if (skipped && !doomed(state) && (state.finished || solveLevel(level, options, child).solvable)) {
-        for (const i of skipped) bypassed.add(i);
-      }
-      if (!state.finished && state.nextSausage <= last && visited.firstVisit(child.state, child.held)) stack.push(child);
-    }
-  }
-  return bypassed;
-}
-
-/**
- * A doughnut already below the ground's surface, with no jump left, can only
- * fall: any ground or ramp ahead meets it side-on.
- */
-function doomed(s: RunnerState): boolean {
-  return !s.grounded && s.coyote <= 0 && s.airJumpsLeft === 0 && s.vy >= 0 && s.y + DOUGHNUT.outerRadius > VIEW.groundY + 2;
 }

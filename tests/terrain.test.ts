@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildLevel, LevelFormatError, parseLevelFile } from "../src/levels/format";
 import { createRunner, speedOf, stepRunner } from "../src/logic/runner";
-import { findBypasses } from "../src/logic/solver";
 import type { RunnerEvent, RunnerState } from "../src/logic/runner";
 import { boostEnd, surfaceAt } from "../src/logic/terrain";
 import { DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
@@ -137,25 +136,6 @@ describe("ramp and pad elements", () => {
 
   it("reject a ramp taller than the limit", () => {
     expect(() => parseLevelFile(file([{ type: "ramp", x: 500, width: 200, height: 900 }]))).toThrow(/height/);
-  });
-});
-
-describe("the bypass search", () => {
-  it("finds a low sausage a full jump can pass over, and not one that blocks the only way across", () => {
-    const level: LevelData = {
-      ...base,
-      length: 4000,
-      ground: [
-        { x: 0, width: 1000 },
-        { x: 1380, width: 800 },
-        { x: 2480, width: 10000 },
-      ],
-      sausages: [
-        { x: 1170, y: 231, length: 40, thickness: 22 },
-        { x: 2310, y: 320, length: 40, thickness: 22 },
-      ],
-    };
-    expect([...findBypasses(level, { airJumps: 0, shield: false }, [0, 1])]).toEqual([1]);
   });
 });
 

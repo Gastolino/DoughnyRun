@@ -11,21 +11,8 @@ import type { LevelData } from "./types";
 export interface RunnerOptions {
   airJumps: number;
   /**
-   * Treats threading this sausage as a crash. Level checks use it to prove
-   * that a sausage cannot be bypassed: with it set, the level must become
-   * impossible.
-   */
-  solidSausage?: number;
-  /**
-   * Treats passing any of these sausages without threading it as a crash.
-   * The editor uses it to ask whether every sausage can be threaded in one run.
-   */
-  mustThread?: readonly number[];
-  /**
    * In top gear the doughnut wears its sunglasses, and they absorb one crash
-   * into a sausage (not a fall or a cliff).
-   * On by default; level checks turn it off to prove sausages cannot be
-   * avoided without spending it.
+   * into a sausage (not a fall, a cliff or a skipped sausage). On by default.
    */
   shield?: boolean;
 }
@@ -39,7 +26,11 @@ export interface RunnerInput {
   pressed: boolean;
 }
 
-export type DeathCause = "sausage" | "fell" | "wall" | "missed";
+/**
+ * How a run ends early. A doughnut that passes a sausage without threading
+ * it is arrested: every sausage must go through the hole.
+ */
+export type DeathCause = "sausage" | "fell" | "wall" | "arrested";
 
 /** A sausage currently passing through the hole. */
 export interface Grind {
@@ -98,7 +89,6 @@ export type RunnerEvent =
   | { type: "boost"; index: number }
   | { type: "grindStart"; index: number }
   | ({ type: "grindEnd" } & GrindResult)
-  | { type: "skip"; index: number }
   | { type: "die"; cause: DeathCause }
   /** The sunglasses absorbed a crash; the doughnut carries on in first gear. */
   | { type: "save"; index: number }
@@ -257,7 +247,7 @@ export function stepRunner(
     if (s.smashed.includes(i)) continue;
     const result = checkSausage(ring, sausage);
     const grind = s.grinds.find((g) => g.index === i);
-    if (result === "hit" || (result === "threaded" && options.solidSausage === i)) {
+    if (result === "hit") {
       if (!shielded(s, options)) return die(s, "sausage", events);
       // The sunglasses take the hit: the doughnut smashes through this sausage.
       s.smashed.push(i);
@@ -285,12 +275,8 @@ export function stepRunner(
   while (s.nextSausage < level.sausages.length) {
     const sausage = level.sausages[s.nextSausage];
     if (sausage.x + sausage.length > ring.cx - ring.halfWidth) break;
-    if (!s.threaded.includes(s.nextSausage)) {
-      if (options.mustThread?.includes(s.nextSausage)) return die(s, "missed", events);
-      s.chain = 0;
-      shiftGear(s, GRIND.skipGears);
-      events.push({ type: "skip", index: s.nextSausage });
-    }
+    // A sausage smashed by the sunglasses counts as dealt with.
+    if (!s.threaded.includes(s.nextSausage) && !s.smashed.includes(s.nextSausage)) return die(s, "arrested", events);
     s.nextSausage += 1;
   }
 

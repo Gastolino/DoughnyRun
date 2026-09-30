@@ -154,25 +154,15 @@ describe("grinding", () => {
     expect(s.gear).toBe(TUNING.gears.length - 1);
   });
 
-  it("breaks the chain and slows down when a sausage is jumped over", () => {
+  it("arrests a doughnut that jumps over a sausage instead of threading it", () => {
     const level = withSausages(cocktail(300, restY, 100), cocktail(900, VIEW.groundY - 8, 40));
     const s = createRunner(level);
     while (s.x < 780) run(s, level, 1);
-    const before = s.gear;
     run(s, level, 1, true, true);
     const events = run(s, level, 120, true);
-    expect(events).toContainEqual({ type: "skip", index: 1 });
-    expect(s.chain).toBe(0);
-    expect(s.dead).toBeNull();
-    expect(before).toBe(2);
-    expect(s.gear).toBe(1);
-  });
-
-  it("treats threading as a crash for the sausage named solid", () => {
-    const level = withSausages(cocktail(300, restY));
-    const s = createRunner(level);
-    for (let i = 0; i < 240; i++) stepRunner(s, { held: false, pressed: false }, level, { airJumps: 0, solidSausage: 0 });
-    expect(s.dead).toBe("sausage");
+    expect(s.threaded).toEqual([0]);
+    expect(s.dead).toBe("arrested");
+    expect(events).toContainEqual({ type: "die", cause: "arrested" });
   });
 });
 
@@ -187,7 +177,7 @@ describe("air jumps and air combos", () => {
       ground: [{ x: 0, width: 800 }, { x: 1600, width: 100000 }],
       sausages: [cocktail(1000, 231, 40), cocktail(1280, 110, 40)].map((z) => ({ ...z, thickness: 22 })),
     };
-    const options = { airJumps: 1, mustThread: [0, 1] };
+    const options = { airJumps: 1 };
     const inputs = solveLevel(level, options).inputs ?? [];
     const s = createRunner(level, options);
     const events: RunnerEvent[] = [];
@@ -210,13 +200,6 @@ describe("air jumps and air combos", () => {
     expect(s.airGrinds).toBe(0); // reset on landing
   });
 
-  it("crashes on a skipped sausage the options say must be threaded", () => {
-    const level = withSausages(cocktail(300, VIEW.groundY - 8, 40));
-    const s = createRunner(level);
-    run(s, level, 30);
-    for (let i = 0; i < 200; i++) stepRunner(s, { held: true, pressed: i === 0 }, level, { airJumps: 0, mustThread: [0] });
-    expect(s.dead).toBe("missed");
-  });
 });
 
 describe("sunglasses' free crash", () => {
@@ -231,7 +214,9 @@ describe("sunglasses' free crash", () => {
     expect(events).toContainEqual({ type: "save", index: 0 });
     expect(s.gear).toBe(0);
     expect(s.smashed).toEqual([0]);
-    expect(events.map((e) => e.type)).toContain("skip");
+    // A smashed sausage counts as dealt with: no arrest follows.
+    run(s, level, 200);
+    expect(s.dead).toBeNull();
   });
 
   it("does not save a fall into a void or a crash into a cliff", () => {

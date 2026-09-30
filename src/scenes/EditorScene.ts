@@ -659,7 +659,7 @@ export class EditorScene extends Phaser.Scene {
     this.checking = true;
     this.ui.check.disabled = true;
     this.stuckAt = null;
-    this.setStatus("Checking: can the level be finished?");
+    this.setStatus("Checking: can the level be finished, threading every sausage?");
     const level = buildLevel(file);
     const options = runnerOptionsFor(file.topping);
     const snapshot = JSON.stringify(this.file);
@@ -667,19 +667,11 @@ export class EditorScene extends Phaser.Scene {
     let message: string;
     let tone: "good" | "bad" = "good";
     if (!clear.solvable) {
-      message = `Not finishable with ${TOPPINGS[file.topping].name}: the solver gets no further than x = ${Math.round(clear.furthestX)} (red line).`;
+      message = `Not finishable with ${TOPPINGS[file.topping].name}, threading every sausage: the solver gets no further than x = ${Math.round(clear.furthestX)} (red line).`;
       tone = "bad";
       this.stuckAt = clear.furthestX;
-    } else if (level.sausages.length === 0) {
-      message = "Finishable. There are no sausages to thread yet.";
     } else {
-      this.setStatus("Finishable. Checking: can every sausage be threaded in one run?");
-      const all = await solveAsync(level, { ...options, mustThread: level.sausages.map((_, i) => i) });
-      if (all.solvable) message = "Finishable, and every sausage can be threaded in one run.";
-      else {
-        message = `Finishable, but not every sausage can be threaded in one run: the best run stops near x = ${Math.round(all.furthestX)} (red line).`;
-        this.stuckAt = all.furthestX;
-      }
+      message = "Finishable, threading every sausage.";
     }
     this.checking = false;
     this.ui.check.disabled = false;

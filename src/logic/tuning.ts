@@ -74,6 +74,4 @@ export const GRIND = {
   // Each grind in an unbroken chain adds this much to the multiplier.
   chainStep: 0.5,
   maxChain: 8,
-  // Gears lost when the doughnut passes a sausage without threading it.
-  skipGears: -1,
 } as const;

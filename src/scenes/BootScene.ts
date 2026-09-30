@@ -41,6 +41,7 @@ export class BootScene extends Phaser.Scene {
     this.makeGlitter();
     this.makePill();
     this.makeBite();
+    this.makeCopArm();
     this.makeShades();
     // Rainbow lettering is drawn onto canvases, which need the font ready.
     void loadFunFont().then(() => this.scene.start(window.location.hash === "#editor" ? "editor" : "menu"));
@@ -146,6 +147,99 @@ export class BootScene extends Phaser.Scene {
       const a = (i / 9) * Math.PI * 2;
       g.beginPath();
       g.arc(26 + Math.cos(a) * 17, 26 + Math.sin(a) * 17, 6.5, 0, Math.PI * 2);
+      g.fill();
+    }
+    tex.refresh();
+  }
+
+  /**
+   * A police officer's arm reaching up from below: a navy sleeve with gold
+   * buttons on the cuff, and an open hand cupped to lift the doughnut. The
+   * top of the palm, where the doughnut sits, is at (80, 64).
+   */
+  private makeCopArm(): void {
+    const tex = this.textures.createCanvas("cop-arm", 160, 300);
+    if (!tex) return;
+    const g = tex.getContext();
+    const skin = "#f5c7a0";
+    const skinLine = "#b9785a";
+    g.lineJoin = "round";
+    g.lineCap = "round";
+
+    // Sleeve, with a shaded side and a crease.
+    g.fillStyle = "#1d3576";
+    g.beginPath();
+    g.moveTo(40, 128);
+    g.lineTo(120, 128);
+    g.lineTo(130, 300);
+    g.lineTo(30, 300);
+    g.closePath();
+    g.fill();
+    g.fillStyle = "#16295c";
+    g.beginPath();
+    g.moveTo(100, 128);
+    g.lineTo(120, 128);
+    g.lineTo(130, 300);
+    g.lineTo(106, 300);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = "#2c4a96";
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(62, 170);
+    g.quadraticCurveTo(70, 200, 60, 240);
+    g.stroke();
+
+    // Wrist and cupped hand: thumb on the left, fingers curling up on the right.
+    const finger = (x0: number, y0: number, x1: number, y1: number, w: number) => {
+      g.lineWidth = w + 4;
+      g.strokeStyle = skinLine;
+      g.beginPath();
+      g.moveTo(x0, y0);
+      g.lineTo(x1, y1);
+      g.stroke();
+      g.lineWidth = w;
+      g.strokeStyle = skin;
+      g.stroke();
+    };
+    g.fillStyle = skin;
+    g.strokeStyle = skinLine;
+    g.lineWidth = 3;
+    g.fillRect(58, 100, 44, 32);
+    g.beginPath();
+    g.ellipse(80, 86, 50, 24, 0, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    finger(38, 86, 26, 58, 15);
+    finger(112, 84, 122, 50, 14);
+    finger(122, 88, 134, 58, 13);
+    finger(128, 94, 142, 70, 12);
+    // The palm's rim over the finger roots, so the cup reads cleanly.
+    g.fillStyle = skin;
+    g.beginPath();
+    g.ellipse(80, 88, 46, 18, 0, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = "#e0a57f";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.ellipse(80, 80, 30, 8, 0, 0.2, Math.PI - 0.2);
+    g.stroke();
+
+    // Cuff with three gold buttons.
+    g.fillStyle = "#122250";
+    g.fillRect(36, 118, 88, 26);
+    for (const bx of [56, 80, 104]) {
+      g.beginPath();
+      g.arc(bx, 131, 7, 0, Math.PI * 2);
+      g.fillStyle = "#b8860b";
+      g.fill();
+      g.beginPath();
+      g.arc(bx, 131, 5, 0, Math.PI * 2);
+      g.fillStyle = "#f5c542";
+      g.fill();
+      g.beginPath();
+      g.arc(bx - 1.8, 129, 1.6, 0, Math.PI * 2);
+      g.fillStyle = "#fff6cf";
       g.fill();
     }
     tex.refresh();
