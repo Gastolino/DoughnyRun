@@ -70,11 +70,22 @@ next one, and a new topping comes with the level that first needs it.
 | 1-2   | Sugar Rush      | Pink icing: one jump                         | Ramps and pads |
 | 1-3   | Jelly Hills     | Pink icing: one jump                         | Rolling hills  |
 | 1-4   | Glaze Heights   | Chocolate glaze: press again in the air to double jump | Double jump |
+| 1-5   | Chomp Chase     | Chocolate glaze                              | The boss       |
 
 In top gear the doughnut wears its sunglasses, and they absorb one crash
 into a sausage: the doughnut smashes through it and drops to first gear.
 A smashed sausage counts as dealt with. Falling into a void, hitting a cliff
 or skipping a sausage still ends the run.
+
+## The boss
+
+Chomp Chase ends World 1. Wind-up chattering dentures in a police hat run
+after the doughnut, faster than it rolls in any gear below the top, and a
+meter at the top of the screen shows how close they are. Each grind's grade
+moves them: a perfect shoves them back 60 px, a great lets them gain 180, and
+a good or a sloppy grind lets them lunge straight in for the chomp. They never
+fall further behind than they started. The level test proves the level can
+be cleared this way, with every sausage threaded.
 
 Threading a second sausage before touching the ground is an air combo: that
 grind's points are multiplied by the number of grinds in the flight.
@@ -100,6 +111,8 @@ Open it from the menu, or add `#editor` to the address. Tools:
   300 by 80 one. Select it and drag the handle on its lip to set its height.
 - **Speed pad** (B): drag along the ground to lay a pad, or click for a
   160 px one.
+- **Denture chase** (bottom bar): turns the level into a boss chase and
+  sets how fast the dentures run at its start and its end.
 - **Hills** (W): drag along the ground to raise rolling hills, or click for
   three waves over 1200 px. Drag the handle on the first crest to set their
   height; the bottom bar sets the number of waves.

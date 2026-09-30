@@ -15,6 +15,7 @@ import { h, overlay } from "../ui";
 import { ART_HALF_WIDTH, EYES_OFFSET, SHADES_FRAMES } from "./BootScene";
 import { READABLE_FONT, TITLE_FONT } from "./fonts";
 import { showRainbow } from "./rainbowText";
+import { DentureChaser } from "./boss";
 import { addSkySprinkles, DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
 import { COLORS, SPRINKLE_COLORS } from "./palette";
 
@@ -72,6 +73,7 @@ const DEATH_TEXT: Record<DeathCause, string> = {
   fell: "Down the hole you go.",
   wall: "Splat against the cliff.",
   arrested: "Busted! Every sausage goes through the hole.",
+  chomped: "Chomp! The dentures caught up.",
 };
 
 // Draws the pure simulation in src/logic and turns keyboard, mouse and touch
@@ -94,6 +96,8 @@ export class LevelScene extends Phaser.Scene {
   // Where the doughnut was before the latest step, for drawing between steps.
   private prevX = 0;
   private prevY = 0;
+  private prevChaserX = 0;
+  private boss: DentureChaser | null = null;
   private deaths = 0;
   private showHitboxes = false;
   private demoInputs: DecisionInput[] | null = null;
@@ -165,6 +169,7 @@ export class LevelScene extends Phaser.Scene {
     drawGround(this, this.level);
     this.sausages = this.level.sausages.map((s) => drawSausage(this, s));
     drawFinish(this, this.level.length);
+    this.boss = this.level.chaser ? new DentureChaser(this, this.level) : null;
 
     const topping = this.level.topping;
     this.back = this.add.image(0, 0, `doughnut-back-${topping}`).setDepth(DEPTH.back);
@@ -353,8 +358,7 @@ export class LevelScene extends Phaser.Scene {
       const input = this.demoInputs ? this.demoInput() : { held: this.isHeld(), pressed: this.pressLatch };
       this.pressLatch = false;
       this.stepCount += 1;
-      this.prevX = this.runner.x;
-      this.prevY = this.runner.y;
+      this.holdPrevious();
       const events = stepRunner(this.runner, input, this.level, this.options);
       events.forEach((e) => this.onEvent(e));
     }
@@ -458,14 +462,28 @@ export class LevelScene extends Phaser.Scene {
     return coarsePointer() ? "Tap" : "Press";
   }
 
+  /**
+   * Where on screen the camera holds the doughnut. On a boss level it sits
+   * further right, so that the dentures chasing it stay in view.
+   */
+  private screenX(): number {
+    return this.level.chaser ? 470 : VIEW.playerScreenX;
+  }
+
+  /** Remembers where things stand before a step, for drawing between steps. */
+  private holdPrevious(): void {
+    this.prevX = this.runner.x;
+    this.prevY = this.runner.y;
+    this.prevChaserX = this.runner.chaserX;
+  }
+
   private pause(): void {
     if (this.mode !== "running") return;
     this.mode = "paused";
     this.holdPointer = null;
     this.pressLatch = false;
     // Resume drawing from where the doughnut stands, not a step behind it.
-    this.prevX = this.runner.x;
-    this.prevY = this.runner.y;
+    this.holdPrevious();
     this.showBanner(`Paused\n${this.verb()} to continue`, 1);
   }
 
@@ -519,8 +537,7 @@ export class LevelScene extends Phaser.Scene {
 
   private restart(): void {
     this.runner = createRunner(this.level, this.options);
-    this.prevX = this.runner.x;
-    this.prevY = this.runner.y;
+    this.holdPrevious();
     this.updatesSinceStart = 0;
     this.accumulator = 0;
     this.stepCount = 0;
@@ -537,7 +554,7 @@ export class LevelScene extends Phaser.Scene {
     this.glassDrop.v = 1;
     this.glassHop.v = 0;
     this.glassSpin = false;
-    this.cameras.main.setScroll(this.runner.x - VIEW.playerScreenX, 0);
+    this.cameras.main.setScroll(this.runner.x - this.screenX(), 0);
     this.render(1, 0);
   }
 
@@ -645,7 +662,7 @@ export class LevelScene extends Phaser.Scene {
     const x = this.prevX + (s.x - this.prevX) * alpha;
     const y = this.prevY + (s.y - this.prevY) * alpha;
     const cam = this.cameras.main;
-    cam.scrollX = x - VIEW.playerScreenX;
+    cam.scrollX = x - this.screenX();
     // Ease upwards and back down, rather than snapping with every jump.
     const targetY = Math.min(0, y - CAMERA_TOP);
     const ease = 1 - Math.exp(-deltaMs / 120);
@@ -666,6 +683,10 @@ export class LevelScene extends Phaser.Scene {
     this.animateSpeedMeter(boosted ? TUNING.gears.length - 1 : s.gear, deltaMs);
     this.updateShades(s.gear, deltaMs);
     this.updateWiggles(x);
+    if (this.boss) {
+      const cx = this.prevChaserX + (s.chaserX - this.prevChaserX) * alpha;
+      this.boss.update(cx, x, deltaMs, this.mode === "running" || s.dead === "chomped");
+    }
 
     // Food flies up from the point of contact while the doughnut rolls.
     const rolling = this.mode === "running" && s.grounded && !s.dead;
@@ -1163,7 +1184,7 @@ export class LevelScene extends Phaser.Scene {
 
   private popText(text: string, big: boolean, titleLines = Infinity): void {
     // Pinned to the screen, since the camera keeps the doughnut in one place.
-    const x = VIEW.playerScreenX + 40;
+    const x = this.screenX() + 40;
     // Kept below the score display, which the text drifts towards as it fades.
     const size = (big ? 28 : 21) + (coarsePointer() ? 6 : 0);
     const y = Math.max(170, this.runner.y - this.cameras.main.scrollY - DOUGHNUT.outerRadius - 40);

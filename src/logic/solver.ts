@@ -127,6 +127,63 @@ export class NumberSet {
 }
 
 /**
+ * A map from the same numbers to a number, kept in typed arrays for the same
+ * reason as NumberSet. It holds each boss state's best distance so far.
+ */
+export class NumberMap {
+  private keys: Float64Array;
+  private values: Float64Array;
+  private mask: number;
+  size = 0;
+
+  constructor(capacity = 1 << 20) {
+    this.keys = new Float64Array(capacity).fill(-1);
+    this.values = new Float64Array(capacity);
+    this.mask = capacity - 1;
+  }
+
+  private slot(k: number): number {
+    const lo = k >>> 0;
+    const hi = Math.floor(k / 4294967296) >>> 0;
+    let h = Math.imul(lo ^ Math.imul(hi, 0x9e3779b1), 0x85ebca6b);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16;
+    return h & this.mask;
+  }
+
+  get(k: number): number | undefined {
+    let i = this.slot(k);
+    while (this.keys[i] !== -1) {
+      if (this.keys[i] === k) return this.values[i];
+      i = (i + 1) & this.mask;
+    }
+    return undefined;
+  }
+
+  set(k: number, v: number): void {
+    let i = this.slot(k);
+    while (this.keys[i] !== -1 && this.keys[i] !== k) i = (i + 1) & this.mask;
+    if (this.keys[i] === -1) {
+      this.keys[i] = k;
+      this.size++;
+    }
+    this.values[i] = v;
+    if (this.size * 2 > this.keys.length) this.grow();
+  }
+
+  private grow(): void {
+    const oldKeys = this.keys;
+    const oldValues = this.values;
+    this.keys = new Float64Array(oldKeys.length * 2).fill(-1);
+    this.values = new Float64Array(oldKeys.length * 2);
+    this.mask = this.keys.length - 1;
+    this.size = 0;
+    for (let j = 0; j < oldKeys.length; j++) if (oldKeys[j] !== -1) this.set(oldKeys[j], oldValues[j]);
+  }
+}
+
+/**
  * The rarer parts of a state, present only mid-grind, over a sausage already
  * threaded, or after the free crash, as text. A grind in progress will
  * change the speed when it ends.
@@ -134,25 +191,39 @@ export class NumberSet {
 function extraKey(s: RunnerState): string | null {
   // Sausages threaded but not yet left behind decide whether the doughnut
   // is arrested when it passes them.
+  // Only sausages not yet left behind matter to what happens next.
   const pending = s.threaded.filter((i) => i >= s.nextSausage);
-  if (s.grinds.length === 0 && s.smashed.length === 0 && pending.length === 0) return null;
+  const smashed = s.smashed.filter((i) => i >= s.nextSausage);
+  if (s.grinds.length === 0 && smashed.length === 0 && pending.length === 0) return null;
   const grinds = s.grinds.map((g) => `${g.index}:${Math.round((g.offsetSum / g.steps) * 20)}`).join(";");
-  return `${grinds}|${s.smashed.join(";")}|${pending.join(";")}`;
+  return `${grinds}|${smashed.join(";")}|${pending.join(";")}`;
 }
 
-/** The states a search has seen. */
+/**
+ * The states a search has seen. On a boss level a state also has the
+ * dentures' distance behind, and a state is only worth exploring again when
+ * the dentures are further behind than on any earlier visit: everything the
+ * doughnut can do with them close, it can do with them further away.
+ */
 class Visited {
-  private seen: NumberSet;
+  private seen = new NumberSet();
   private seenRare = new Set<string>();
+  private bestGap = new NumberMap();
+  private bestGapRare = new Map<string, number>();
 
-  constructor() {
-    this.seen = new NumberSet();
-  }
-
-  /** Records a state; false when an identical one was already seen. */
+  /** Records a state; false when an identical or better one was already seen. */
   firstVisit(state: RunnerState, held: boolean): boolean {
     const key = numericKey(state, held);
     const extra = extraKey(state);
+    if (Number.isFinite(state.chaserX)) {
+      const gap = state.x - state.chaserX;
+      const full = extra === null ? null : `${key}|${extra}`;
+      const best = full === null ? this.bestGap.get(key) : this.bestGapRare.get(full);
+      if (best !== undefined && best >= gap - 1) return false;
+      if (full === null) this.bestGap.set(key, gap);
+      else this.bestGapRare.set(full, gap);
+      return true;
+    }
     if (extra === null) return this.seen.add(key);
     const full = `${key}|${extra}`;
     if (this.seenRare.has(full)) return false;

@@ -1,7 +1,7 @@
 import { isToppingId } from "../logic/toppings";
 import type { ToppingId } from "../logic/toppings";
 import { DOUGHNUT, VIEW } from "../logic/tuning";
-import type { Boost, GroundSegment, Hills, LevelData, Ramp, Sausage } from "../logic/types";
+import type { Boost, Chaser, GroundSegment, Hills, LevelData, Ramp, Sausage } from "../logic/types";
 
 // The level file format, shared by the levels in this folder and by the
 // editor's export. A level is a list of typed elements, so that new kinds of
@@ -13,6 +13,7 @@ import type { Boost, GroundSegment, Hills, LevelData, Ramp, Sausage } from "../l
 //   "name": "Sprinkle Hop",
 //   "length": 6400,
 //   "topping": "plain",
+//   "chaser": { "gap": 900, "speed": 460, "speedEnd": 505 },   (a boss level only)
 //   "elements": [
 //     { "type": "gap", "x": 1300, "width": 140 },
 //     { "type": "sausage", "x": 2000, "y": 231, "length": 40 },
@@ -79,6 +80,8 @@ export interface LevelFile {
   name: string;
   length: number;
   topping: ToppingId;
+  /** The denture chase, on a boss level. */
+  chaser?: Chaser;
   elements: LevelElement[];
 }
 
@@ -99,6 +102,10 @@ export const LIMITS = {
   minHillsHeight: 10,
   maxHillsHeight: 200,
   maxWaves: 40,
+  minChaserGap: 200,
+  maxChaserGap: 3000,
+  minChaserSpeed: 100,
+  maxChaserSpeed: 900,
   /** The solver keeps the running pad in five bits of its state key. */
   maxBoosts: 30,
   /** Highest a sausage may hang: far above anything a double jump reaches. */
@@ -191,7 +198,17 @@ export function parseLevelFile(input: unknown): LevelFile {
   if (elements.filter((e) => e.type === "boost").length > LIMITS.maxBoosts) {
     fail(`A level can have at most ${LIMITS.maxBoosts} speed pads.`);
   }
-  return { format: FORMAT_VERSION, name, length, topping, elements };
+  const file: LevelFile = { format: FORMAT_VERSION, name, length, topping, elements };
+  if (root.chaser !== undefined) {
+    const c = obj(root.chaser, 'The level\'s "chaser"');
+    const where = "The chaser";
+    file.chaser = {
+      gap: num(c, "gap", where, LIMITS.minChaserGap, LIMITS.maxChaserGap),
+      speed: num(c, "speed", where, LIMITS.minChaserSpeed, LIMITS.maxChaserSpeed),
+      speedEnd: num(c, "speedEnd", where, LIMITS.minChaserSpeed, LIMITS.maxChaserSpeed),
+    };
+  }
+  return file;
 }
 
 /** Turns a level file into a playable level: ground from the gaps, sorted sausages. */
@@ -221,7 +238,9 @@ export function buildLevel(file: LevelFile): LevelData {
     .filter((e): e is HillsElement => e.type === "hills")
     .map((e) => ({ x: e.x, width: e.width, height: e.height, waves: e.waves }))
     .sort((a, b) => a.x - b.x);
-  return { name: file.name, length: file.length, topping: file.topping, ground, sausages, ramps, boosts, hills };
+  const level: LevelData = { name: file.name, length: file.length, topping: file.topping, ground, sausages, ramps, boosts, hills };
+  if (file.chaser) level.chaser = { ...file.chaser };
+  return level;
 }
 
 /** Writes a level file as tidy JSON, one element per line. */

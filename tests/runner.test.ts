@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRunner, gradeFor, speedOf, stepRunner } from "../src/logic/runner";
 import type { RunnerEvent, RunnerState } from "../src/logic/runner";
 import { solveLevel, STEPS_PER_DECISION } from "../src/logic/solver";
-import { DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
+import { CHASE, DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
 import type { LevelData, Sausage } from "../src/logic/types";
 
 const flat: LevelData = { name: "flat", length: 100000, topping: "plain", ground: [{ x: 0, width: 100000 }], sausages: [], ramps: [], boosts: [], hills: [] };
@@ -242,5 +242,47 @@ describe("sunglasses' free crash", () => {
     s.gear = TOP;
     for (let i = 0; i < 200; i++) stepRunner(s, { held: false, pressed: false }, level, { airJumps: 0, shield: false });
     expect(s.dead).toBe("sausage");
+  });
+});
+
+describe("the boss chase", () => {
+  const chased = (speed: number, sausages: Sausage[] = []): LevelData => ({
+    ...flat,
+    length: 20000,
+    sausages,
+    chaser: { gap: 450, speed, speedEnd: speed },
+  });
+
+  it("lets the dentures catch a doughnut slower than them", () => {
+    const level = chased(400);
+    const s = createRunner(level);
+    const events = run(s, level, 1200);
+    expect(s.dead).toBe("chomped");
+    expect(events).toContainEqual({ type: "die", cause: "chomped" });
+    // Caught after closing a 450 px lead at 80 px/s, less the bite's reach.
+    expect(s.x - createRunner(level).x).toBeCloseTo((320 * (450 - CHASE.reach)) / 80, -1);
+  });
+
+  it("keeps them no further behind than they started", () => {
+    const level = chased(100);
+    const s = createRunner(level);
+    run(s, level, 600);
+    expect(s.x - s.chaserX).toBeCloseTo(450, 5);
+  });
+
+  it("moves them by each grind's grade", () => {
+    const level = chased(320, [cocktail(600, restY, 100)]);
+    const s = createRunner(level);
+    s.chaserX = s.x - 300;
+    // Up to the step that ends the grind; the dentures keep pace until then.
+    let end: RunnerEvent | undefined;
+    let before = 0;
+    while (!end && s.x < 2000) {
+      before = s.x - s.chaserX;
+      end = run(s, level, 1).find((e) => e.type === "grindEnd");
+    }
+    expect(end).toMatchObject({ grade: "perfect" });
+    expect(before).toBeCloseTo(300, 5);
+    expect(s.x - s.chaserX).toBeCloseTo(300 - CHASE.shove.perfect, 5);
   });
 });

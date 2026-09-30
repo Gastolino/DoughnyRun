@@ -23,7 +23,8 @@ export function checkLevel(id: string): void {
     let solved: SolveResult | undefined;
     const solve = (): SolveResult => (solved ??= solveLevel(level, options));
 
-    it("can be cleared with its topping", () => {
+    // A boss's chase makes the search much larger.
+    it("can be cleared with its topping", { timeout: level.chaser ? 240_000 : 60_000 }, () => {
       const result = solve();
       expect(result.solvable, `stuck near x=${Math.round(result.furthestX)}`).toBe(true);
     });
@@ -41,7 +42,10 @@ export function checkLevel(id: string): void {
 
     if (TOPPINGS[level.topping].airJumps > 0) {
       it("cannot be cleared without its topping", () => {
-        expect(solveLevel(level, runnerOptionsFor("plain")).solvable).toBe(false);
+        // Without a boss's chase, which only adds ways to lose, so that the
+        // search stays small.
+        const unchased = { ...level, chaser: undefined };
+        expect(solveLevel(unchased, runnerOptionsFor("plain")).solvable).toBe(false);
       });
     }
   });

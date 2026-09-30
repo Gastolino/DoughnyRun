@@ -44,6 +44,7 @@ const DEFAULT_SAUSAGE = 40;
 const DEFAULT_RAMP = { width: 300, height: 80 };
 const DEFAULT_BOOST = 160;
 const DEFAULT_HILLS = { width: 1200, height: 70, waves: 3 };
+const DEFAULT_CHASER = { gap: 450, speed: 485, speedEnd: 515 };
 const START_X = 80;
 
 const TOOL_HELP: Record<Tool, string> = {
@@ -142,6 +143,9 @@ export class EditorScene extends Phaser.Scene {
     name: HTMLInputElement;
     length: HTMLInputElement;
     topping: HTMLSelectElement;
+    chase: HTMLInputElement;
+    chaseSpeed: HTMLInputElement;
+    chaseSpeedEnd: HTMLInputElement;
     selection: HTMLElement;
     status: HTMLElement;
   };
@@ -792,6 +796,34 @@ export class EditorScene extends Phaser.Scene {
     ) as HTMLSelectElement;
     topping.addEventListener("change", () => this.commit(() => (this.file.topping = topping.value as ToppingId)));
 
+    // The boss chase: on or off, and how fast the dentures run at the start
+    // and the end of the level.
+    const chase = h("input", { id: "level-chase", type: "checkbox", "aria-label": "Denture chase" }) as HTMLInputElement;
+    chase.addEventListener("change", () =>
+      this.commit(() => {
+        if (chase.checked) this.file.chaser = { ...DEFAULT_CHASER };
+        else delete this.file.chaser;
+      }),
+    );
+    const speedField = (id: string, key: "speed" | "speedEnd", label: string) => {
+      const input = h("input", {
+        id,
+        type: "number",
+        min: LIMITS.minChaserSpeed,
+        max: LIMITS.maxChaserSpeed,
+        step: 5,
+        "aria-label": label,
+      }) as HTMLInputElement;
+      input.addEventListener("change", () => {
+        const v = Number(input.value);
+        const c = this.file.chaser;
+        if (c && Number.isFinite(v)) this.commit(() => (c[key] = clamp(Math.round(v), LIMITS.minChaserSpeed, LIMITS.maxChaserSpeed)));
+      });
+      return input;
+    };
+    const chaseSpeed = speedField("level-chase-speed", "speed", "Dentures' speed at the start");
+    const chaseSpeedEnd = speedField("level-chase-speed-end", "speedEnd", "Dentures' speed at the end");
+
     const top = h(
       "div",
       { id: "editor-top", class: "editor-bar" },
@@ -843,6 +875,11 @@ export class EditorScene extends Phaser.Scene {
         length,
         h("label", { for: "level-topping" }, "Topping"),
         topping,
+        h("label", { for: "level-chase" }, "Denture chase"),
+        chase,
+        chaseSpeed,
+        h("span", { class: "muted" }, "to"),
+        chaseSpeedEnd,
       ),
       selection,
       status,
@@ -851,7 +888,7 @@ export class EditorScene extends Phaser.Scene {
       document.getElementById(bar.id)?.remove();
       document.body.append(bar);
     }
-    this.ui = { tools, undo, redo, check, name, length, topping, selection, status };
+    this.ui = { tools, undo, redo, check, name, length, topping, chase, chaseSpeed, chaseSpeedEnd, selection, status };
     this.refreshUi();
     this.setStatus(TOOL_HELP.select);
   }
@@ -880,6 +917,15 @@ export class EditorScene extends Phaser.Scene {
     if (document.activeElement !== ui.name) ui.name.value = this.file.name;
     if (document.activeElement !== ui.length) ui.length.value = String(this.file.length);
     ui.topping.value = this.file.topping;
+    const chaser = this.file.chaser;
+    ui.chase.checked = Boolean(chaser);
+    for (const [input, value] of [
+      [ui.chaseSpeed, chaser?.speed],
+      [ui.chaseSpeedEnd, chaser?.speedEnd],
+    ] as const) {
+      input.disabled = !chaser;
+      if (document.activeElement !== input) input.value = value === undefined ? "" : String(value);
+    }
 
     const e = this.element(this.selected);
     ui.selection.replaceChildren();

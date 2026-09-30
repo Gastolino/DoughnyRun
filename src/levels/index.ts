@@ -5,6 +5,7 @@ import level11 from "./1-1.json";
 import level12 from "./1-2.json";
 import level13 from "./1-3.json";
 import level14 from "./1-4.json";
+import level15 from "./1-5.json";
 
 // The campaign, in the order it unlocks. Each file goes through the same
 // checks as a pasted editor export, so a hand-edited file with a mistake
@@ -21,4 +22,4 @@ const entry = (id: string, raw: unknown): CampaignLevel => {
   return { id, file, level: buildLevel(file) };
 };
 
-export const CAMPAIGN: CampaignLevel[] = [entry("1-1", level11), entry("1-2", level12), entry("1-3", level13), entry("1-4", level14)];
+export const CAMPAIGN: CampaignLevel[] = [entry("1-1", level11), entry("1-2", level12), entry("1-3", level13), entry("1-4", level14), entry("1-5", level15)];

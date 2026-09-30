@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "Chomp Chase",
+  "length": 12000,
+  "topping": "glaze",
+  "chaser": { "gap": 450, "speed": 485, "speedEnd": 515 },
+  "elements": [
+    { "type": "sausage", "x": 500, "y": 412, "length": 120 },
+    { "type": "sausage", "x": 800, "y": 412, "length": 120 },
+    { "type": "sausage", "x": 1100, "y": 412, "length": 120 },
+    { "type": "gap", "x": 1600, "width": 380 },
+    { "type": "sausage", "x": 1770, "y": 231, "length": 40 },
+    { "type": "gap", "x": 2700, "width": 380 },
+    { "type": "sausage", "x": 2870, "y": 231, "length": 40 },
+    { "type": "hills", "x": 3700, "width": 1200, "height": 60, "waves": 2 },
+    { "type": "sausage", "x": 3980, "y": 352, "length": 40 },
+    { "type": "sausage", "x": 4280, "y": 282, "length": 40 },
+    { "type": "gap", "x": 5050, "width": 800 },
+    { "type": "sausage", "x": 5200, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 5480, "y": 110, "length": 40 },
+    { "type": "sausage", "x": 6300, "y": 412, "length": 200 },
+    { "type": "ramp", "x": 7300, "width": 300, "height": 60 },
+    { "type": "gap", "x": 7600, "width": 700 },
+    { "type": "sausage", "x": 7840, "y": 118, "length": 40 },
+    { "type": "gap", "x": 8800, "width": 800 },
+    { "type": "sausage", "x": 8950, "y": 231, "length": 40 },
+    { "type": "sausage", "x": 9230, "y": 100, "length": 40 },
+    { "type": "hills", "x": 9900, "width": 1400, "height": 70, "waves": 3 },
+    { "type": "sausage", "x": 10113, "y": 342, "length": 40 },
+    { "type": "sausage", "x": 10580, "y": 342, "length": 40 },
+    { "type": "sausage", "x": 11046, "y": 342, "length": 40 }
+  ]
+}

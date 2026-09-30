@@ -42,6 +42,7 @@ export class BootScene extends Phaser.Scene {
     this.makePill();
     this.makeBite();
     this.makeCopArm();
+    this.makeDentures();
     this.makeShades();
     // Rainbow lettering is drawn onto canvases, which need the font ready.
     void loadFunFont().then(() => this.scene.start(window.location.hash === "#editor" ? "editor" : "menu"));
@@ -243,6 +244,184 @@ export class BootScene extends Phaser.Scene {
       g.fill();
     }
     tex.refresh();
+  }
+
+  /**
+   * The boss: wind-up chattering dentures facing right, in two jaws so the
+   * mouth can open. The upper jaw wears a police hat and has googly eyes
+   * under angry brows; it hinges at (14, 100). The lower jaw stands on two
+   * orange feet, whose soles are at its bottom edge, with its front teeth at
+   * the right edge. A brass key winds it from behind.
+   */
+  private makeDentures(): void {
+    const gum = "#ff7fa6";
+    const gumLine = "#b8456e";
+    const tooth = (g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, down: boolean) => {
+      g.beginPath();
+      if (down) {
+        g.moveTo(x, y);
+        g.lineTo(x + w, y);
+        g.lineTo(x + w, y + h - w / 2);
+        g.arc(x + w / 2, y + h - w / 2, w / 2, 0, Math.PI);
+      } else {
+        g.moveTo(x, y + h);
+        g.lineTo(x + w, y + h);
+        g.lineTo(x + w, y + w / 2);
+        g.arc(x + w / 2, y + w / 2, w / 2, 0, Math.PI, true);
+      }
+      g.closePath();
+      g.fillStyle = "#fffdf4";
+      g.fill();
+      g.strokeStyle = "#c9bfa6";
+      g.lineWidth = 2;
+      g.stroke();
+    };
+
+    const upper = this.textures.createCanvas("denture-upper", 160, 124);
+    if (upper) {
+      const g = upper.getContext();
+      g.lineJoin = "round";
+      // Teeth hang below the gum, the front one biggest.
+      [
+        [44, 16],
+        [62, 17],
+        [81, 18],
+        [101, 19],
+        [122, 24],
+      ].forEach(([x, w]) => tooth(g, x, 92, w, 26, true));
+      // Gum, bulging to a rounded front.
+      g.beginPath();
+      g.moveTo(8, 104);
+      g.lineTo(8, 70);
+      g.quadraticCurveTo(10, 58, 30, 58);
+      g.lineTo(122, 58);
+      g.quadraticCurveTo(156, 60, 152, 88);
+      g.quadraticCurveTo(150, 102, 134, 102);
+      g.lineTo(30, 104);
+      g.closePath();
+      g.fillStyle = gum;
+      g.fill();
+      g.strokeStyle = gumLine;
+      g.lineWidth = 3;
+      g.stroke();
+      // Googly eyes with angry brows.
+      for (const [ex, ey] of [
+        [92, 78],
+        [118, 76],
+      ]) {
+        g.beginPath();
+        g.arc(ex, ey, 10, 0, Math.PI * 2);
+        g.fillStyle = "#ffffff";
+        g.fill();
+        g.strokeStyle = "#3a2330";
+        g.lineWidth = 2;
+        g.stroke();
+        g.beginPath();
+        g.arc(ex + 3, ey + 2, 4.5, 0, Math.PI * 2);
+        g.fillStyle = "#1d1320";
+        g.fill();
+      }
+      g.strokeStyle = "#3a2330";
+      g.lineWidth = 4;
+      g.lineCap = "round";
+      g.beginPath();
+      g.moveTo(80, 63);
+      g.lineTo(100, 70);
+      g.moveTo(128, 64);
+      g.lineTo(110, 69);
+      g.stroke();
+      // Police hat: crown, band, visor jutting forward, gold badge.
+      g.fillStyle = "#1d3576";
+      g.beginPath();
+      g.moveTo(34, 50);
+      g.quadraticCurveTo(26, 14, 72, 8);
+      g.quadraticCurveTo(122, 4, 128, 30);
+      g.lineTo(122, 50);
+      g.closePath();
+      g.fill();
+      g.fillStyle = "#11204a";
+      g.fillRect(34, 40, 90, 12);
+      g.fillStyle = "#15151c";
+      g.beginPath();
+      g.ellipse(118, 54, 34, 7, -0.08, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "#f5c542";
+      g.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const r = i % 2 === 0 ? 10 : 4.5;
+        g.lineTo(80 + Math.cos(a) * r, 26 + Math.sin(a) * r);
+      }
+      g.closePath();
+      g.fill();
+      g.strokeStyle = "#b8860b";
+      g.lineWidth = 1.5;
+      g.stroke();
+      upper.refresh();
+    }
+
+    const lower = this.textures.createCanvas("denture-lower", 160, 84);
+    if (lower) {
+      const g = lower.getContext();
+      g.lineJoin = "round";
+      // Orange feet under the jaw.
+      g.fillStyle = "#ff9a3c";
+      g.strokeStyle = "#c2621a";
+      g.lineWidth = 2.5;
+      for (const fx of [46, 104]) {
+        g.beginPath();
+        g.ellipse(fx, 72, 20, 10, 0, 0, Math.PI * 2);
+        g.fill();
+        g.stroke();
+      }
+      [
+        [44, 16],
+        [62, 17],
+        [81, 18],
+        [101, 19],
+        [122, 22],
+      ].forEach(([x, w]) => tooth(g, x, 2, w, 24, false));
+      g.beginPath();
+      g.moveTo(8, 16);
+      g.lineTo(134, 18);
+      g.quadraticCurveTo(152, 20, 150, 38);
+      g.quadraticCurveTo(146, 58, 120, 60);
+      g.lineTo(30, 60);
+      g.quadraticCurveTo(8, 60, 8, 40);
+      g.closePath();
+      g.fillStyle = gum;
+      g.fill();
+      g.strokeStyle = gumLine;
+      g.lineWidth = 3;
+      g.stroke();
+      lower.refresh();
+    }
+
+    const key = this.textures.createCanvas("windup-key", 70, 60);
+    if (key) {
+      const g = key.getContext();
+      g.fillStyle = "#d4a53a";
+      g.strokeStyle = "#8a6414";
+      g.lineWidth = 2.5;
+      g.fillRect(40, 25, 30, 10);
+      g.strokeRect(40, 25, 30, 10);
+      for (const [cx, cy] of [
+        [22, 16],
+        [22, 44],
+      ]) {
+        g.beginPath();
+        g.ellipse(cx, cy, 18, 14, 0, 0, Math.PI * 2);
+        g.fill();
+        g.stroke();
+        g.beginPath();
+        g.ellipse(cx, cy, 7, 5, 0, 0, Math.PI * 2);
+        g.fillStyle = "#8a6414";
+        g.fill();
+        g.fillStyle = "#d4a53a";
+      }
+      g.fillRect(34, 22, 10, 16);
+      key.refresh();
+    }
   }
 
   /** A sugar sprinkle: a white capsule with a highlight, tinted in use. */

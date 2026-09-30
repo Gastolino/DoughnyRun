@@ -1,6 +1,6 @@
 import { boostEnd, rampAt, rampSlope, slopeAt, surfaceAt } from "./terrain";
 import { centreOffset, checkSausage, ringAt } from "./threading";
-import { DOUGHNUT, GRIND, TUNING, VIEW } from "./tuning";
+import { CHASE, DOUGHNUT, GRIND, TUNING, VIEW } from "./tuning";
 import type { Grade } from "./tuning";
 import type { LevelData } from "./types";
 
@@ -30,7 +30,7 @@ export interface RunnerInput {
  * How a run ends early. A doughnut that passes a sausage without threading
  * it is arrested: every sausage must go through the hole.
  */
-export type DeathCause = "sausage" | "fell" | "wall" | "arrested";
+export type DeathCause = "sausage" | "fell" | "wall" | "arrested" | "chomped";
 
 /** A sausage currently passing through the hole. */
 export interface Grind {
@@ -64,6 +64,8 @@ export interface RunnerState {
   smashed: number[];
   /** Index of the speed pad whose boost is running, or -1. */
   boostPad: number;
+  /** Front teeth of the boss's dentures, or -Infinity on a level without them. */
+  chaserX: number;
   dead: DeathCause | null;
   finished: boolean;
 }
@@ -102,6 +104,7 @@ const SURFACE_TOLERANCE = 2;
 // doughnut: far more than any hill curves, far less than a ramp's lip drops.
 const STICK = 4;
 
+
 export function createRunner(level: LevelData, options: RunnerOptions = PLAIN): RunnerState {
   const x = level.ground[0]?.x ?? 0;
   return {
@@ -122,6 +125,7 @@ export function createRunner(level: LevelData, options: RunnerOptions = PLAIN): 
     airGrinds: 0,
     smashed: [],
     boostPad: -1,
+    chaserX: level.chaser ? x + 80 - level.chaser.gap : -Infinity,
     dead: null,
     finished: false,
   };
@@ -154,6 +158,14 @@ export function stepRunner(
   const prevX = s.x;
   s.x += speedOf(s) * dt;
   if (s.boostPad >= 0 && s.x > boostEnd(level.boosts[s.boostPad])) s.boostPad = -1;
+  if (level.chaser) {
+    // The dentures speed up as the level goes on, and never drop further
+    // behind than they started.
+    const c = level.chaser;
+    const t = Math.min(1, Math.max(0, s.x / level.length));
+    s.chaserX = Math.max(s.chaserX + (c.speed + (c.speedEnd - c.speed) * t) * dt, s.x - c.gap);
+    if (s.chaserX >= s.x - CHASE.reach) return die(s, "chomped", events);
+  }
   s.buffer = input.pressed ? TUNING.jumpBufferTime : Math.max(0, s.buffer - dt);
   s.coyote = s.grounded ? TUNING.coyoteTime : Math.max(0, s.coyote - dt);
 
@@ -267,7 +279,11 @@ export function stepRunner(
         events.push({ type: "grindStart", index: i });
       }
     } else if (grind) {
-      events.push(finishGrind(s, grind, level.sausages[i].length));
+      const end = finishGrind(s, grind, level.sausages[i].length);
+      // On a boss level the grade moves the dentures: a perfect shoves them
+      // back, anything less lets them lunge closer.
+      if (level.chaser) s.chaserX = Math.max(s.chaserX + CHASE.shove[end.grade], s.x - level.chaser.gap);
+      events.push(end);
     }
   }
 
@@ -287,7 +303,7 @@ export function stepRunner(
   return events;
 }
 
-function finishGrind(s: RunnerState, grind: Grind, length: number): RunnerEvent {
+function finishGrind(s: RunnerState, grind: Grind, length: number): Extract<RunnerEvent, { type: "grindEnd" }> {
   s.grinds = s.grinds.filter((g) => g !== grind);
   const offset = grind.offsetSum / grind.steps;
   const g = gradeFor(offset);

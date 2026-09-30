@@ -43,6 +43,18 @@ export interface Boost {
   width: number;
 }
 
+/**
+ * The boss chase: wind-up dentures that start `gap` pixels behind the
+ * doughnut and run at a speed rising from `speed` to `speedEnd` over the
+ * level. They never fall further behind than they started, and when they
+ * reach the doughnut they chomp it.
+ */
+export interface Chaser {
+  gap: number;
+  speed: number;
+  speedEnd: number;
+}
+
 /** A level ready to play: ground worked out from the gaps, sausages sorted. */
 export interface LevelData {
   name: string;
@@ -58,4 +70,6 @@ export interface LevelData {
   boosts: Boost[];
   /** Sorted by x, and never overlapping each other or a ramp. */
   hills: Hills[];
+  /** Present on a boss level. */
+  chaser?: Chaser;
 }
