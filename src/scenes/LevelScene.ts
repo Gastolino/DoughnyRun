@@ -471,17 +471,20 @@ export class LevelScene extends Phaser.Scene {
   }
 
   private drawGround(): void {
-    const depth = DEPTH.sausage - 1;
+    // Behind the whole doughnut, whose two halves straddle the sausages; in
+    // between them, the ground would hide only one half of its bottom.
+    const depth = DEPTH.back - 2;
     const g = this.add.graphics().setDepth(depth);
-    const cap = this.bake("ground-cap", 16, 16, (c) => c.fillStyle(COLORS.groundTop).fillCircle(8, 8, 8));
+    const cap = this.bake("ground-cap", 12, 12, (c) => c.fillStyle(COLORS.groundTop).fillCircle(6, 6, 6));
     for (const seg of this.level.ground) {
       g.fillStyle(COLORS.ground);
       g.fillRect(seg.x, VIEW.groundY, seg.width, VIEW.height - VIEW.groundY);
-      // The icing strip along the top, with rounded ends from the cap image.
+      // The icing strip starts exactly where the doughnut stands, with
+      // rounded ends from the cap image.
       g.fillStyle(COLORS.groundTop);
-      g.fillRect(seg.x + 4, VIEW.groundY - 4, seg.width - 8, 16);
-      this.add.image(seg.x + 4, VIEW.groundY + 4, cap).setDepth(depth);
-      this.add.image(seg.x + seg.width - 4, VIEW.groundY + 4, cap).setDepth(depth);
+      g.fillRect(seg.x + 6, VIEW.groundY, seg.width - 12, 12);
+      this.add.image(seg.x + 6, VIEW.groundY + 6, cap).setDepth(depth);
+      this.add.image(seg.x + seg.width - 6, VIEW.groundY + 6, cap).setDepth(depth);
     }
   }
 
