@@ -11,6 +11,7 @@ import {
 } from "../levels/format";
 import type { LevelElement, LevelFile } from "../levels/format";
 import { reachHeights } from "../logic/reach";
+import { VEHICLES, vehicleWidth } from "../logic/terrain";
 import { runnerOptionsFor, TOPPING_IDS, TOPPINGS } from "../logic/toppings";
 import type { ToppingId } from "../logic/toppings";
 import { VIEW } from "../logic/tuning";
@@ -25,7 +26,7 @@ export interface EditorRequest {
   file?: LevelFile;
 }
 
-type Tool = "select" | "sausage" | "gap" | "ramp" | "boost" | "hills";
+type Tool = "select" | "sausage" | "gap" | "ramp" | "boost" | "hills" | "cab" | "cart" | "street";
 
 type Drag =
   | { kind: "pan"; startX: number; startY: number; scrollX: number; scrollY: number }
@@ -45,6 +46,7 @@ const DEFAULT_RAMP = { width: 300, height: 80 };
 const DEFAULT_BOOST = 160;
 const DEFAULT_HILLS = { width: 1200, height: 70, waves: 3 };
 const DEFAULT_CHASER = { gap: 450, speed: 485, speedEnd: 515 };
+const DEFAULT_STREET = 900;
 const START_X = 80;
 
 const TOOL_HELP: Record<Tool, string> = {
@@ -54,11 +56,16 @@ const TOOL_HELP: Record<Tool, string> = {
   ramp: "Drag along the ground to place a ramp; select it and drag its lip up or down to set its height.",
   boost: "Drag along the ground to lay a speed pad.",
   hills: "Drag along the ground to raise rolling hills; select them and drag the handle on the first crest to set their height.",
+  cab: "Click to park a cab; drag to slide it along.",
+  cart: "Click to park a hot dog cart; drag to slide it along.",
+  street: "Drag along the ground to lay a street crossing (scenery for the city look).",
 };
 
 /** Length along the ground, whatever the element calls it. */
 function sizeOf(e: LevelElement): number {
-  return e.type === "sausage" ? e.length : e.width;
+  if (e.type === "sausage") return e.length;
+  if (e.type === "cab" || e.type === "cart") return vehicleWidth({ kind: e.type, x: e.x });
+  return e.width;
 }
 
 function minSize(e: LevelElement): number {
@@ -73,6 +80,11 @@ function minSize(e: LevelElement): number {
       return LIMITS.minBoostWidth;
     case "hills":
       return LIMITS.minHillsWidth;
+    case "cab":
+    case "cart":
+      return sizeOf(e);
+    case "street":
+      return LIMITS.minStreetWidth;
   }
 }
 
@@ -93,7 +105,19 @@ function setSize(e: LevelElement, v: number): void {
     case "hills":
       e.width = clamp(v, LIMITS.minHillsWidth, LIMITS.maxHillsWidth);
       break;
+    case "street":
+      e.width = clamp(v, LIMITS.minStreetWidth, LIMITS.maxLength);
+      break;
+    case "cab":
+    case "cart":
+      // A vehicle keeps its size.
+      break;
   }
+}
+
+/** How tall a parked vehicle stands, for its selection box. */
+function vehicleHeight(kind: "cab" | "cart"): number {
+  return kind === "cab" ? VEHICLES.cab.roof : VEHICLES.cart.height;
 }
 
 /** Where the first crest of a stretch of hills stands, for its height handle. */
@@ -143,6 +167,7 @@ export class EditorScene extends Phaser.Scene {
     name: HTMLInputElement;
     length: HTMLInputElement;
     topping: HTMLSelectElement;
+    theme: HTMLSelectElement;
     chase: HTMLInputElement;
     chaseSpeed: HTMLInputElement;
     chaseSpeedEnd: HTMLInputElement;
@@ -362,6 +387,13 @@ export class EditorScene extends Phaser.Scene {
         g.fillRect(e.x - hs / 2, VIEW.groundY - hs / 2, hs, hs);
         g.fillRect(e.x + e.width - hs / 2, VIEW.groundY - hs / 2, hs, hs);
         g.fillRect(firstCrest(e) - hs / 2, VIEW.groundY - e.height - hs / 2, hs, hs);
+      } else if (e.type === "cab" || e.type === "cart") {
+        g.strokeRect(e.x, VIEW.groundY - vehicleHeight(e.type), sizeOf(e), vehicleHeight(e.type));
+      } else if (e.type === "street") {
+        g.strokeRect(e.x, VIEW.groundY - 4, e.width, 40);
+        g.fillStyle(0x1e6fff, 1);
+        g.fillRect(e.x - hs / 2, VIEW.groundY - hs / 2, hs, hs);
+        g.fillRect(e.x + e.width - hs / 2, VIEW.groundY - hs / 2, hs, hs);
       } else if (e.type === "boost") {
         g.strokeRect(e.x - 4, VIEW.groundY - 14, e.width + 8, 24);
         g.fillStyle(0x1e6fff, 1);
@@ -419,13 +451,23 @@ export class EditorScene extends Phaser.Scene {
       const rise = e.height * ((wx - e.x) / e.width) ** 2;
       if (wx > e.x && wx < e.x + e.width && wy >= VIEW.groundY - rise - pad) return { index: i, part: "body" };
     }
+    for (let i = this.file.elements.length - 1; i >= 0; i--) {
+      const e = this.file.elements[i];
+      if (e.type !== "cab" && e.type !== "cart") continue;
+      if (wx > e.x && wx < e.x + sizeOf(e) && wy > VIEW.groundY - vehicleHeight(e.type) - pad && wy < VIEW.groundY + pad) {
+        return { index: i, part: "body" };
+      }
+    }
     if (wy > VIEW.groundY - pad) {
-      for (let i = this.file.elements.length - 1; i >= 0; i--) {
-        const e = this.file.elements[i];
-        if (e.type !== "gap") continue;
-        if (Math.abs(wx - e.x) <= pad) return { index: i, part: "left" };
-        if (Math.abs(wx - (e.x + e.width)) <= pad) return { index: i, part: "right" };
-        if (wx > e.x && wx < e.x + e.width) return { index: i, part: "body" };
+      // Gaps before streets, which a gap can cut through.
+      for (const kind of ["gap", "street"] as const) {
+        for (let i = this.file.elements.length - 1; i >= 0; i--) {
+          const e = this.file.elements[i];
+          if (e.type !== kind) continue;
+          if (Math.abs(wx - e.x) <= pad) return { index: i, part: "left" };
+          if (Math.abs(wx - (e.x + e.width)) <= pad) return { index: i, part: "right" };
+          if (wx > e.x && wx < e.x + e.width) return { index: i, part: "body" };
+        }
       }
     }
     return null;
@@ -451,16 +493,18 @@ export class EditorScene extends Phaser.Scene {
         this.drag = { kind: "new-sausage", index: this.selected ?? 0, anchor: x };
         return;
       }
-      if (this.tool === "gap" || this.tool === "ramp" || this.tool === "boost" || this.tool === "hills") {
+      if (this.tool !== "select") {
         const x = clamp(snap(w.x, fine), 0, this.file.length);
-        const element: LevelElement =
-          this.tool === "gap"
-            ? { type: "gap", x, width: LIMITS.minGapWidth }
-            : this.tool === "ramp"
-              ? { type: "ramp", x, width: DEFAULT_RAMP.width, height: DEFAULT_RAMP.height }
-              : this.tool === "hills"
-                ? { type: "hills", x, ...DEFAULT_HILLS }
-                : { type: "boost", x, width: DEFAULT_BOOST };
+        const defaults: Record<Exclude<Tool, "select" | "sausage">, LevelElement> = {
+          gap: { type: "gap", x, width: LIMITS.minGapWidth },
+          ramp: { type: "ramp", x, width: DEFAULT_RAMP.width, height: DEFAULT_RAMP.height },
+          hills: { type: "hills", x, ...DEFAULT_HILLS },
+          boost: { type: "boost", x, width: DEFAULT_BOOST },
+          cab: { type: "cab", x },
+          cart: { type: "cart", x },
+          street: { type: "street", x, width: DEFAULT_STREET },
+        };
+        const element = defaults[this.tool];
         this.commit(() => {
           this.file.elements.push(element);
           this.selected = this.file.elements.length - 1;
@@ -541,6 +585,11 @@ export class EditorScene extends Phaser.Scene {
             break;
           case "new-sausage":
           case "new-gap": {
+            // A new vehicle follows the pointer; everything else stretches.
+            if (e.type === "cab" || e.type === "cart") {
+              e.x = x;
+              break;
+            }
             const lo = Math.min(d.anchor, x);
             const hi = Math.max(d.anchor, x);
             // A click without a drag keeps the element's default size.
@@ -608,6 +657,9 @@ export class EditorScene extends Phaser.Scene {
       else if (e.key === "r" || e.key === "R") this.setTool("ramp");
       else if (e.key === "b" || e.key === "B") this.setTool("boost");
       else if (e.key === "w" || e.key === "W") this.setTool("hills");
+      else if (e.key === "c" || e.key === "C") this.setTool("cab");
+      else if (e.key === "h" || e.key === "H") this.setTool("cart");
+      else if (e.key === "t" || e.key === "T") this.setTool("street");
       else if (e.key === "Delete" || e.key === "Backspace") this.deleteSelected();
       else if (e.key === "Escape") {
         this.selected = null;
@@ -768,6 +820,9 @@ export class EditorScene extends Phaser.Scene {
       ramp: button("Ramp", () => this.setTool("ramp"), "Place kicker ramps (R)"),
       boost: button("Speed pad", () => this.setTool("boost"), "Lay speed pads (B)"),
       hills: button("Hills", () => this.setTool("hills"), "Raise rolling hills (W)"),
+      cab: button("Cab", () => this.setTool("cab"), "Park cabs (C)"),
+      cart: button("Hot dog cart", () => this.setTool("cart"), "Park hot dog carts (H)"),
+      street: button("Street", () => this.setTool("street"), "Lay street crossings (T)"),
     };
     const undo = button("Undo", () => this.undo(), "Undo (Ctrl+Z)");
     const redo = button("Redo", () => this.redo(), "Redo (Ctrl+Shift+Z)");
@@ -797,6 +852,19 @@ export class EditorScene extends Phaser.Scene {
       ...TOPPING_IDS.map((id) => h("option", { value: id }, `${TOPPINGS[id].name} (${TOPPINGS[id].power.split(":")[0].toLowerCase()})`)),
     ) as HTMLSelectElement;
     topping.addEventListener("change", () => this.commit(() => (this.file.topping = topping.value as ToppingId)));
+
+    const theme = h(
+      "select",
+      { id: "level-theme", "aria-label": "Look" },
+      h("option", { value: "candy" }, "Sugar Land"),
+      h("option", { value: "city" }, "The city"),
+    ) as HTMLSelectElement;
+    theme.addEventListener("change", () =>
+      this.commit(() => {
+        if (theme.value === "city") this.file.theme = "city";
+        else delete this.file.theme;
+      }),
+    );
 
     // The boss chase: on or off, and how fast the dentures run at the start
     // and the end of the level.
@@ -829,7 +897,7 @@ export class EditorScene extends Phaser.Scene {
     const top = h(
       "div",
       { id: "editor-top", class: "editor-bar" },
-      h("div", { class: "group", role: "group", "aria-label": "Tools" }, tools.select, tools.sausage, tools.gap, tools.ramp, tools.boost, tools.hills),
+      h("div", { class: "group", role: "group", "aria-label": "Tools" }, tools.select, tools.sausage, tools.gap, tools.ramp, tools.boost, tools.hills, tools.cab, tools.cart, tools.street),
       h("div", { class: "group" }, undo, redo),
       h(
         "div",
@@ -877,6 +945,8 @@ export class EditorScene extends Phaser.Scene {
         length,
         h("label", { for: "level-topping" }, "Topping"),
         topping,
+        h("label", { for: "level-theme" }, "Look"),
+        theme,
         h("label", { for: "level-chase" }, "Denture chase"),
         chase,
         chaseSpeed,
@@ -890,7 +960,7 @@ export class EditorScene extends Phaser.Scene {
       document.getElementById(bar.id)?.remove();
       document.body.append(bar);
     }
-    this.ui = { tools, undo, redo, check, name, length, topping, chase, chaseSpeed, chaseSpeedEnd, selection, status };
+    this.ui = { tools, undo, redo, check, name, length, topping, theme, chase, chaseSpeed, chaseSpeedEnd, selection, status };
     this.refreshUi();
     this.setStatus(TOOL_HELP.select);
   }
@@ -919,6 +989,7 @@ export class EditorScene extends Phaser.Scene {
     if (document.activeElement !== ui.name) ui.name.value = this.file.name;
     if (document.activeElement !== ui.length) ui.length.value = String(this.file.length);
     ui.topping.value = this.file.topping;
+    ui.theme.value = this.file.theme ?? "candy";
     const chaser = this.file.chaser;
     ui.chase.checked = Boolean(chaser);
     for (const [input, value] of [
@@ -949,7 +1020,16 @@ export class EditorScene extends Phaser.Scene {
       return [h("label", { for: id }, label), input];
     };
     const L = this.file.length;
-    const titles = { sausage: "Sausage", gap: "Gap", ramp: "Ramp", boost: "Speed pad", hills: "Hills" } as const;
+    const titles = {
+      sausage: "Sausage",
+      gap: "Gap",
+      ramp: "Ramp",
+      boost: "Speed pad",
+      hills: "Hills",
+      cab: "Cab",
+      cart: "Hot dog cart",
+      street: "Street",
+    } as const;
     ui.selection.append(h("strong", {}, titles[e.type]));
     switch (e.type) {
       case "sausage":
@@ -971,6 +1051,13 @@ export class EditorScene extends Phaser.Scene {
         break;
       case "boost":
         ui.selection.append(...field("x", "x", e.x, 0, L), ...field("Width", "width", e.width, LIMITS.minBoostWidth, LIMITS.maxBoostWidth));
+        break;
+      case "cab":
+      case "cart":
+        ui.selection.append(...field("x", "x", e.x, 0, L));
+        break;
+      case "street":
+        ui.selection.append(...field("x", "x", e.x, 0, L), ...field("Width", "width", e.width, LIMITS.minStreetWidth, LIMITS.maxLength));
         break;
       case "hills":
         ui.selection.append(

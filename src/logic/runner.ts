@@ -1,4 +1,4 @@
-import { boostEnd, rampAt, rampSlope, slopeAt, surfaceAt } from "./terrain";
+import { boostEnd, rampAt, rampSlope, slopeAt, surfaceAt, vehicleAt } from "./terrain";
 import { centreOffset, checkSausage, ringAt } from "./threading";
 import { CHASE, DOUGHNUT, GRIND, TUNING, VIEW } from "./tuning";
 import type { Grade } from "./tuning";
@@ -32,7 +32,7 @@ export interface RunnerInput {
  * How a run ends early. A doughnut that passes a sausage without threading
  * it is arrested: every sausage must go through the hole.
  */
-export type DeathCause = "sausage" | "fell" | "wall" | "arrested" | "chomped";
+export type DeathCause = "sausage" | "fell" | "wall" | "cab" | "cart" | "arrested" | "chomped";
 
 /** A sausage currently passing through the hole. */
 export interface Grind {
@@ -224,12 +224,15 @@ export function stepRunner(
   let touching = false;
   if (surface !== null) {
     // Rolling up a ramp or off its lip, the surface moves between steps, so
-    // the doughnut is measured against the lower of the two surfaces.
-    const prevSurface = surfaceAt(level, prevX) ?? surface;
+    // the doughnut is measured against the lower of the two surfaces. A
+    // vehicle's side is a sheer step, so arriving at one is measured against
+    // its top alone.
+    const reachedVehicle = vehicleAt(level, s.x) !== vehicleAt(level, prevX);
+    const prevSurface = reachedVehicle ? surface : (surfaceAt(level, prevX) ?? surface);
     if (prevBottom > Math.max(surface, prevSurface) + SURFACE_TOLERANCE) {
       // Already below the surface when the ground arrived: the doughnut has
-      // run into the side of a cliff.
-      return die(s, "wall", events);
+      // run into the side of a cliff, or of a parked vehicle.
+      return die(s, vehicleAt(level, s.x)?.kind ?? "wall", events);
     }
     // A rolling doughnut hugs a surface that curves away beneath it, as over
     // the top of a hill; only a drop, such as a ramp's lip, throws it clear.

@@ -6,7 +6,7 @@ import { runnerOptionsFor, TOPPINGS } from "../src/logic/toppings";
 import { CHASE, DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
 import type { LevelData, Sausage } from "../src/logic/types";
 
-const flat: LevelData = { name: "flat", length: 100000, topping: "plain", ground: [{ x: 0, width: 100000 }], sausages: [], ramps: [], boosts: [], hills: [] };
+const flat: LevelData = { name: "flat", length: 100000, topping: "plain", ground: [{ x: 0, width: 100000 }], sausages: [], ramps: [], boosts: [], hills: [], vehicles: [], streets: [], theme: "candy" };
 const restY = VIEW.groundY - DOUGHNUT.outerRadius;
 const withSausages = (...sausages: Sausage[]): LevelData => ({ ...flat, sausages });
 const cocktail = (x: number, y: number, length = 200): Sausage => ({ x, y, length, thickness: 16 });

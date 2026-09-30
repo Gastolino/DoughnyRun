@@ -1,6 +1,6 @@
 import { cloneRunner, createRunner, PLAIN, speedOf, stepRunner } from "./runner";
 import type { RunnerOptions, RunnerState } from "./runner";
-import { slopeAt } from "./terrain";
+import { slopeAt, vehicleWidth } from "./terrain";
 import { DOUGHNUT, TUNING } from "./tuning";
 import type { LevelData } from "./types";
 
@@ -20,7 +20,7 @@ import type { LevelData } from "./types";
 //
 // Most of the search's states are jumps in flight, so it also skips a jump
 // from flat ground when nothing lies within the jump's reach: no sausage,
-// void, ramp, pad or finish. Such a jump lands exactly where rolling would
+// void, ramp, pad, hills, vehicle or finish. Such a jump lands exactly where rolling would
 // have taken the doughnut, in the same gear, so no outcome is lost.
 
 export interface SolveResult {
@@ -276,6 +276,7 @@ function featuresOf(level: LevelData): Features {
   for (const r of level.ramps) spans.push([r.x, r.x + r.width]);
   for (const b of level.boosts) spans.push([b.x, b.x + b.width]);
   for (const h of level.hills) spans.push([h.x, h.x + h.width]);
+  for (const v of level.vehicles) spans.push([v.x, v.x + vehicleWidth(v)]);
   for (let i = 0; i < level.ground.length; i++) {
     const end = level.ground[i].x + level.ground[i].width;
     spans.push([end, level.ground[i + 1]?.x ?? end]);
@@ -307,6 +308,9 @@ function airtimeBound(airJumps: number): number {
     ramps: [],
     boosts: [],
     hills: [],
+    vehicles: [],
+    streets: [],
+    theme: "candy",
   };
   const s = createRunner(flat);
   let steps = 0;

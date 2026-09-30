@@ -15,6 +15,9 @@ const rolling: LevelData = {
   ramps: [],
   boosts: [],
   hills: [],
+  vehicles: [],
+  streets: [],
+  theme: "candy",
 };
 
 describe("medals", () => {

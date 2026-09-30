@@ -1,5 +1,7 @@
 import type { ToppingId } from "./toppings";
 
+export type Theme = "candy" | "city";
+
 export interface Sausage {
   /** Left end of the sausage in world pixels. */
   x: number;
@@ -37,6 +39,22 @@ export interface Hills {
   waves: number;
 }
 
+/**
+ * A parked vehicle, solid to the ground: a doughnut can land on top and roll
+ * along it, but running into its side is a crash. A cab's top follows its
+ * body from the trunk over the roof to the hood; a hot dog cart is flat.
+ */
+export interface Vehicle {
+  kind: "cab" | "cart";
+  x: number;
+}
+
+/** A street crossing, drawn as asphalt with a crosswalk. It is scenery only. */
+export interface Street {
+  x: number;
+  width: number;
+}
+
 /** A speed pad on the ground. Rolling over it sends the doughnut into boost. */
 export interface Boost {
   x: number;
@@ -70,6 +88,12 @@ export interface LevelData {
   boosts: Boost[];
   /** Sorted by x, and never overlapping each other or a ramp. */
   hills: Hills[];
+  /** Sorted by x, and never overlapping each other, a ramp or hills. */
+  vehicles: Vehicle[];
+  /** Street crossings, for the city's scenery. */
+  streets: Street[];
   /** Present on a boss level. */
   chaser?: Chaser;
+  /** Which world's look the level wears. */
+  theme: Theme;
 }

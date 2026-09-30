@@ -26,6 +26,9 @@ const FLAT: LevelData = {
   ramps: [],
   boosts: [],
   hills: [],
+  vehicles: [],
+  streets: [],
+  theme: "candy",
 };
 
 function highest(airJumps: number): number {

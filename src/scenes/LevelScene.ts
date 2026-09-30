@@ -77,6 +77,8 @@ const DEATH_TEXT: Record<DeathCause, string> = {
   sausage: "Bonk! The sausage hit the dough.",
   fell: "Down the hole you go.",
   wall: "Splat against the cliff.",
+  cab: "Honk! Bumped into a cab.",
+  cart: "Clang! Ran into a hot dog cart.",
   arrested: "Busted! Every sausage goes through the hole.",
   chomped: "Chomp! The dentures caught up.",
 };
