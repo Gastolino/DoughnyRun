@@ -8,9 +8,18 @@ import { solveLevel, STEPS_PER_DECISION } from "../logic/solver";
 import type { DecisionInput } from "../logic/solver";
 import type { LevelData, Sausage } from "../logic/types";
 import { coarsePointer, gameElement, isBlocked, keepAwake, onBlockedChange } from "../platform";
-import { COLORS } from "./palette";
+import { ART_HALF_WIDTH } from "./BootScene";
+import { COLORS, SPRINKLE_COLORS } from "./palette";
 
 const DEPTH = { back: 5, sausage: 10, front: 15, fx: 20, hud: 100 } as const;
+
+// Sprinkles ride around the middle of the icing band. They circle once for
+// every trip of the ring's own circumference, which reads as the doughnut
+// rolling along while its eyes stay fixed on the way ahead.
+const SPRINKLES = 12;
+const SPRINKLE_RX = ART_HALF_WIDTH - 12;
+const SPRINKLE_RY = (DOUGHNUT.outerRadius + DOUGHNUT.holeRadius) / 2 - 1;
+const ROLL_RADIUS = DOUGHNUT.outerRadius;
 
 const GRADE_TEXT: Record<Grade, { label: string; color: string }> = {
   perfect: { label: "PERFECT!", color: "#d6246e" },
@@ -61,6 +70,8 @@ export class LevelScene extends Phaser.Scene {
 
   private back!: Phaser.GameObjects.Image;
   private front!: Phaser.GameObjects.Image;
+  private eyes!: Phaser.GameObjects.Image;
+  private sprinkles: Phaser.GameObjects.Image[] = [];
   private sausages: Phaser.GameObjects.Image[] = [];
   private debug!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
@@ -82,6 +93,10 @@ export class LevelScene extends Phaser.Scene {
 
     this.back = this.add.image(0, 0, "doughnut-back").setDepth(DEPTH.back);
     this.front = this.add.image(0, 0, "doughnut-front").setDepth(DEPTH.front);
+    this.eyes = this.add.image(0, 0, "doughnut-eyes").setDepth(DEPTH.front + 2);
+    this.sprinkles = Array.from({ length: SPRINKLES }, (_, i) =>
+      this.add.image(0, 0, "sprinkle").setTint(SPRINKLE_COLORS[i % SPRINKLE_COLORS.length]),
+    );
     this.debug = this.add.graphics().setDepth(DEPTH.fx);
     this.crumbs = this.add
       .particles(0, 0, "crumb", {
@@ -304,8 +319,7 @@ export class LevelScene extends Phaser.Scene {
     this.stepCount = 0;
     this.pressLatch = false;
     this.banner.setVisible(false);
-    this.back.setVisible(true);
-    this.front.setVisible(true);
+    this.setDoughnutVisible(true);
     this.sausages.forEach((g) => g.setAlpha(1));
     this.render(1);
   }
@@ -337,8 +351,7 @@ export class LevelScene extends Phaser.Scene {
         this.deaths += 1;
         this.crumbs.explode(40, this.runner.x, this.runner.y);
         this.cameras.main.shake(200, 0.01);
-        this.back.setVisible(false);
-        this.front.setVisible(false);
+        this.setDoughnutVisible(false);
         this.end();
         this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`);
         break;
@@ -372,6 +385,7 @@ export class LevelScene extends Phaser.Scene {
     this.cameras.main.scrollX = x - VIEW.playerScreenX;
     this.back.setPosition(x, y);
     this.front.setPosition(x, y);
+    this.placeEyesAndSprinkles(x, y);
 
     const gears = TUNING.gears.length;
     const bar = "\u25A0".repeat(s.gear + 1) + "\u25A1".repeat(gears - s.gear - 1);
@@ -382,6 +396,28 @@ export class LevelScene extends Phaser.Scene {
 
     this.debug.clear();
     if (this.showHitboxes) this.drawHitboxes(x, y);
+  }
+
+  private setDoughnutVisible(visible: boolean): void {
+    [this.back, this.front, this.eyes, ...this.sprinkles].forEach((o) => o.setVisible(visible));
+  }
+
+  private placeEyesAndSprinkles(x: number, y: number): void {
+    // Follow the squash and stretch of the ring itself.
+    const sx = this.back.scaleX;
+    const sy = this.back.scaleY;
+    this.eyes.setPosition(x + 14 * sx, y - 33 * sy).setScale(sx, sy);
+    const roll = x / ROLL_RADIUS;
+    this.sprinkles.forEach((sprinkle, i) => {
+      const a = roll + (i / SPRINKLES) * Math.PI * 2;
+      const cos = Math.cos(a);
+      const sin = Math.sin(a);
+      sprinkle
+        .setPosition(x + 2 * sx + SPRINKLE_RX * cos * sx, y + SPRINKLE_RY * sin * sy)
+        // Lying along the ring, and behind a passing sausage on the far half.
+        .setRotation(Math.atan2(SPRINKLE_RY * cos, -SPRINKLE_RX * sin) + (i % 3) * 0.6)
+        .setDepth(cos < 0 ? DEPTH.back + 1 : DEPTH.front + 1);
+    });
   }
 
   private squash(sx: number, sy: number): void {
@@ -458,6 +494,19 @@ export class LevelScene extends Phaser.Scene {
       g.fillRoundedRect(1, 0, s.length - 2, s.thickness - 3, r - 1);
       g.fillStyle(COLORS.sausageShine);
       g.fillRoundedRect(r, 3, Math.max(0, s.length - 2 * r), 3, 1.5);
+      // Ketchup and mayo drizzled along the top in two offset waves.
+      const drizzle = (color: number, phase: number) => {
+        g.lineStyle(2.5, color);
+        g.beginPath();
+        for (let px = r * 0.7; px <= s.length - r * 0.7; px += 2) {
+          const py = s.thickness * 0.42 + Math.sin(px / 4.5 + phase) * s.thickness * 0.2;
+          if (px === r * 0.7) g.moveTo(px, py);
+          else g.lineTo(px, py);
+        }
+        g.strokePath();
+      };
+      drizzle(COLORS.ketchup, 0);
+      drizzle(COLORS.mayo, Math.PI);
     });
     return this.add
       .image(s.x, s.y - r, key)

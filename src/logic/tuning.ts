@@ -26,7 +26,7 @@ export const TUNING = {
 // Seen from the side it is a narrow ring: tall, with the hole as a vertical gap.
 export const DOUGHNUT = {
   outerRadius: 48,
-  holeRadius: 26,
+  holeRadius: 28,
   // Horizontal half-width of the ring as drawn in three-quarter view.
   halfWidth: 16,
   // Extra pixels the hole forgives beyond its drawn size. Players judge a

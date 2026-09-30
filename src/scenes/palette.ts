@@ -8,10 +8,14 @@ export const COLORS = {
   icing: 0xff7eb6,
   ground: 0x8a5a3c,
   groundTop: 0xfff1f7,
-  sausage: 0xc0503a,
-  sausageShade: 0x8e3424,
-  sausageShine: 0xe98a6f,
+  sausage: 0xc97447,
+  sausageShade: 0x8c4526,
+  sausageShine: 0xeba57c,
+  ketchup: 0xd7261e,
+  mayo: 0xfff3d1,
   text: "#4a2340",
 } as const;
+
+export const SPRINKLE_COLORS = [0xffffff, 0x7ec8ff, 0xfff27e, 0x9dff7e, 0xb58cff, 0xff9f5a] as const;
 
 export const css = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;

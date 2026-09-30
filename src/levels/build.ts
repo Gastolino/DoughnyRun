@@ -4,7 +4,7 @@ import type { GroundSegment, LevelData, Sausage } from "../logic/types";
 /** Height of the hole's centre for a doughnut rolling along the ground. */
 export const RUN_HEIGHT = VIEW.groundY - DOUGHNUT.outerRadius;
 
-export const COCKTAIL_THICKNESS = 16;
+export const COCKTAIL_THICKNESS = 22;
 
 export interface Gap {
   x: number;
