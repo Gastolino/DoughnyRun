@@ -1,7 +1,7 @@
-// The game's lettering: Comic Sans where the device has it, and Comic Neue,
-// a close match bundled with the game, where it does not (phones mostly).
+// The game's lettering: Bubble Toy (Solid Bold, by ana & yvy), bundled with
+// the game in src/assets/fonts and declared in page.css.
 
-export const FUN_FONT = '"Comic Sans MS", "Comic Neue", "Chalkboard SE", "Comic Sans", cursive';
+export const FUN_FONT = '"Bubble Toy", "Comic Sans MS", cursive';
 
 /**
  * Waits until the bold face can be drawn on a canvas, or gives up after a
@@ -10,7 +10,7 @@ export const FUN_FONT = '"Comic Sans MS", "Comic Neue", "Chalkboard SE", "Comic 
 export function loadFunFont(): Promise<void> {
   const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
   if (!fonts) return Promise.resolve();
-  const wait = Promise.all([fonts.load('700 32px "Comic Neue"'), fonts.load('700 32px "Comic Sans MS"')]).then(() => undefined);
+  const wait = fonts.load('32px "Bubble Toy"').then(() => undefined);
   const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
   return Promise.race([wait, timeout]).catch(() => undefined);
 }

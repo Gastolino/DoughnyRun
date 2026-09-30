@@ -104,8 +104,8 @@ page is hidden, and asks to be turned sideways in portrait.
 
 ## Look and feel
 
-Lettering is Comic Sans where the device has it and Comic Neue elsewhere
-(bundled from `@fontsource/comic-neue`, under the SIL Open Font License).
+Lettering is Bubble Toy Solid Bold by ana & yvy (anayvy.shop), bundled in
+`src/assets/fonts`, trimmed to the characters the game uses.
 Banners and call-outs use rainbow letters with a rainbow outline and land
 with a splash of sugar sprinkles. In top gear the doughnut puts on
 rainbow-shimmer sunglasses.

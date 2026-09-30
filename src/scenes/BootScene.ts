@@ -40,6 +40,7 @@ export class BootScene extends Phaser.Scene {
     this.makeSprinkle();
     this.makeGlitter();
     this.makePill();
+    this.makeBite();
     this.makeShades();
     // Rainbow lettering is drawn onto canvases, which need the font ready.
     void loadFunFont().then(() => this.scene.start(window.location.hash === "#editor" ? "editor" : "menu"));
@@ -125,6 +126,27 @@ export class BootScene extends Phaser.Scene {
       ctx.arc(ex + 1.8, 7, 2.4, 0, Math.PI * 2);
       ctx.fillStyle = "#2b1d2e";
       ctx.fill();
+    }
+    tex.refresh();
+  }
+
+  /**
+   * The shape a bite takes out of the doughnut: a round bite whose edge is
+   * scalloped by teeth. Used to erase, so only its shape matters.
+   */
+  private makeBite(): void {
+    const tex = this.textures.createCanvas("bite", 52, 52);
+    if (!tex) return;
+    const g = tex.getContext();
+    g.fillStyle = "#000000";
+    g.beginPath();
+    g.arc(26, 26, 16, 0, Math.PI * 2);
+    g.fill();
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      g.beginPath();
+      g.arc(26 + Math.cos(a) * 17, 26 + Math.sin(a) * 17, 6.5, 0, Math.PI * 2);
+      g.fill();
     }
     tex.refresh();
   }

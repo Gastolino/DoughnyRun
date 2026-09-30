@@ -106,7 +106,7 @@ export function drawRainbow(text: string, size: number, style: RainbowStyle = "p
   const canvas = document.createElement("canvas");
   const measure = canvas.getContext("2d");
   if (!measure) return canvas;
-  const font = `700 ${px}px ${FUN_FONT}`;
+  const font = `${px}px ${FUN_FONT}`;
   measure.font = font;
   const lines = (bubbly ? text.toUpperCase() : text).split("\n");
   // Bubbly letters stand a little apart, so each reads as its own bubble.

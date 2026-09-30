@@ -1,3 +1,9 @@
+/* Bubble Toy Solid Bold by ana & yvy, trimmed to the characters the game uses. */
+@font-face {
+  font-family: "Bubble Toy";
+  src: url("./assets/fonts/BubbleToy-SolidBold.woff2") format("woff2");
+  font-display: swap;
+}
 /* Page shell shared by the Vite build and the claude.ai artifact. */
 :root {
   --page: #2b1d2e;
@@ -66,7 +72,7 @@ body {
   padding: 24px;
   background: var(--page);
   color: var(--ink);
-  font: 700 20px/1.4 "Comic Sans MS", "Comic Neue", "Chalkboard SE", cursive;
+  font: 20px/1.4 "Bubble Toy", "Comic Sans MS", cursive;
   text-align: center;
 }
 #rotate[hidden] {
@@ -106,7 +112,8 @@ body {
 
 /* ---- Page UI above the game: menu, back button, editor ---- */
 .overlay {
-  font: 700 15px/1.45 "Comic Sans MS", "Comic Neue", "Chalkboard SE", cursive;
+  letter-spacing: 0.04em;
+  font: 17px/1.5 "Bubble Toy", "Comic Sans MS", cursive;
   color: var(--ink);
 }
 .overlay button,
@@ -193,7 +200,7 @@ body {
 }
 .menu-card h2 {
   margin: 18px 0 8px;
-  font-size: 13px;
+  font-size: 15px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #d9b8cc;
@@ -229,7 +236,7 @@ body {
   font-weight: 600;
 }
 .level-meta {
-  font-size: 13px;
+  font-size: 15px;
   color: #d9b8cc;
 }
 .custom-row {

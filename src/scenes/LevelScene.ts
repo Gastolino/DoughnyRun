@@ -121,6 +121,10 @@ export class LevelScene extends Phaser.Scene {
   private shadesFrame = 0;
   private wiggles = new Map<number, { rope: Phaser.GameObjects.Rope; start: number; end: number | null }>();
   private crumbs!: Phaser.GameObjects.Particles.ParticleEmitter;
+  // Crumbs thrown off by each bite when the doughnut is eaten, in screen space.
+  private biteCrumbs!: Phaser.GameObjects.Particles.ParticleEmitter;
+  // The doughnut being eaten after a crash, and the timers driving the bites.
+  private eaten: { image: Phaser.GameObjects.RenderTexture; timers: Phaser.Time.TimerEvent[] } | null = null;
   private puff!: Phaser.GameObjects.Particles.ParticleEmitter;
   // Sprinkles shed behind the doughnut, thicker in higher gears.
   private trail!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -168,6 +172,20 @@ export class LevelScene extends Phaser.Scene {
       this.add.image(0, 0, "sprinkle").setTint(SPRINKLE_COLORS[i % SPRINKLE_COLORS.length]),
     );
     this.debug = this.add.graphics().setDepth(DEPTH.fx);
+    this.eaten = null;
+    this.biteCrumbs = this.add
+      .particles(0, 0, "crumb", {
+        speed: { min: 90, max: 320 },
+        angle: { min: 0, max: 360 },
+        gravityY: 900,
+        lifespan: 750,
+        scale: { start: 1.1, end: 0.3 },
+        rotate: { min: 0, max: 360 },
+        tint: [0xe0a458, 0xf3cfa6, 0xc98a4a, 0xff7eb6, 0xffffff],
+        emitting: false,
+      })
+      .setScrollFactor(0)
+      .setDepth(DEPTH.hud - 1);
     this.crumbs = this.add
       .particles(0, 0, "crumb", {
         speed: { min: 120, max: 380 },
@@ -232,7 +250,6 @@ export class LevelScene extends Phaser.Scene {
     const touch = coarsePointer();
     const hudStyle = {
       fontFamily: FUN_FONT,
-      fontStyle: "bold",
       fontSize: touch ? "26px" : "20px",
       color: COLORS.text,
       stroke: "#ffffff",
@@ -273,7 +290,6 @@ export class LevelScene extends Phaser.Scene {
     this.hint = this.add
       .text(VIEW.width - 16, 12, hint, {
         fontFamily: FUN_FONT,
-        fontStyle: "bold",
         fontSize: touch ? "20px" : "15px",
         color: COLORS.text,
         stroke: "#ffffff",
@@ -500,6 +516,7 @@ export class LevelScene extends Phaser.Scene {
     this.stepCount = 0;
     this.pressLatch = false;
     this.hideBanner();
+    this.stopEating();
     this.setDoughnutVisible(true);
     this.sausages.forEach((g) => g.setAlpha(1).setVisible(true));
     this.wiggles.forEach((w) => w.rope.destroy());
@@ -553,11 +570,9 @@ export class LevelScene extends Phaser.Scene {
         break;
       case "die":
         this.deaths += 1;
-        this.crumbs.explode(40, this.runner.x, this.runner.y);
-        this.cameras.main.shake(200, 0.01);
-        this.setDoughnutVisible(false);
+        this.cameras.main.shake(140, 0.006);
         this.end();
-        this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`);
+        this.eatDoughnut(() => this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`));
         break;
       case "finish":
         this.end();
@@ -710,6 +725,112 @@ export class LevelScene extends Phaser.Scene {
         { scaleX: 1, scaleY: 1, duration: 220, ease: "Back.easeOut" },
       ],
     });
+  }
+
+  /**
+   * After a crash the doughnut hops up into the middle of the screen and is
+   * eaten away: bite after bite takes a scalloped chunk out of it, each
+   * throwing crumbs, until nothing is left. Then the message appears.
+   */
+  private eatDoughnut(done: () => void): void {
+    this.stopEating();
+    const cam = this.cameras.main;
+    const W = 120;
+    const H = 130;
+    const startX = this.back.x - cam.scrollX;
+    const startY = Phaser.Math.Clamp(this.back.y - cam.scrollY, 60, VIEW.height + 40);
+    const image = this.add
+      .renderTexture(startX, startY, W, H)
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.hud - 2);
+    // A snapshot of the doughnut as it looked: both halves, sprinkles, eyes.
+    const topping = this.level.topping;
+    image.stamp(`doughnut-back-${topping}`, undefined, W / 2, H / 2);
+    image.stamp(`doughnut-front-${topping}`, undefined, W / 2, H / 2);
+    for (const s of this.sprinkles) {
+      if (s.depth < DEPTH.front) continue;
+      image.stamp("sprinkle", undefined, W / 2 + (s.x - this.back.x), H / 2 + (s.y - this.back.y), {
+        angle: Phaser.Math.RadToDeg(s.rotation),
+        tint: s.tintTopLeft,
+      });
+    }
+    image.stamp("doughnut-eyes", undefined, W / 2 + EYES_OFFSET.x, H / 2 + EYES_OFFSET.y);
+    this.setDoughnutVisible(false);
+    const timers: Phaser.Time.TimerEvent[] = [];
+    this.eaten = { image, timers };
+
+    // The hop: an arc up and over to the centre, growing as it comes.
+    const endX = VIEW.width / 2;
+    const endY = VIEW.height / 2 - 10;
+    const hop = { t: 0 };
+    this.tweens.add({
+      targets: hop,
+      t: 1,
+      duration: 520,
+      ease: "Sine.easeInOut",
+      onUpdate: () => {
+        const t = hop.t;
+        image
+          .setPosition(startX + (endX - startX) * t, startY + (endY - startY) * t - Math.sin(t * Math.PI) * 110)
+          .setScale(1 + t * 0.9)
+          .setRotation(Math.sin(t * Math.PI) * 0.25);
+      },
+    });
+
+    // The bites, working round the ring and then into what is left.
+    const bites: [number, number][] = [
+      [-0.9, 1],
+      [-0.1, 1],
+      [0.7, 1],
+      [1.6, 1],
+      [2.5, 1],
+      [3.4, 1],
+      [4.4, 1],
+      [0.3, 0.35],
+      [3.0, 0.3],
+    ];
+    const first = 620;
+    const gap = 150;
+    bites.forEach(([angle, reach], i) => {
+      timers.push(
+        this.time.delayedCall(first + i * gap, () => {
+          const lx = W / 2 + Math.cos(angle) * 30 * reach;
+          const ly = H / 2 + Math.sin(angle) * 40 * reach;
+          image.stamp("bite", undefined, lx, ly, { erase: true, angle: Phaser.Math.RadToDeg(angle), scale: 1.05 });
+          // Crumbs fly from where the bite landed on screen.
+          const k = image.scaleX;
+          const cos = Math.cos(image.rotation);
+          const sin = Math.sin(image.rotation);
+          const ox = (lx - W / 2) * k;
+          const oy = (ly - H / 2) * k;
+          this.biteCrumbs.explode(10, image.x + ox * cos - oy * sin, image.y + ox * sin + oy * cos);
+          // A little jolt with every chomp.
+          this.tweens.add({ targets: image, scaleX: k * 1.08, scaleY: k * 0.92, duration: 60, yoyo: true });
+        }),
+      );
+    });
+    timers.push(
+      this.time.delayedCall(first + bites.length * gap, () => {
+        this.biteCrumbs.explode(16, image.x, image.y);
+        this.tweens.add({
+          targets: image,
+          alpha: 0,
+          scale: image.scaleX * 0.6,
+          duration: 160,
+          onComplete: () => this.stopEating(),
+        });
+        done();
+      }),
+    );
+  }
+
+  private stopEating(): void {
+    if (!this.eaten) return;
+    this.eaten.timers.forEach((t) => t.remove(false));
+    this.tweens.killTweensOf(this.eaten.image);
+    this.eaten.image.destroy();
+    this.eaten = null;
   }
 
   /** With the sunglasses on, a jump pops them off the eyes and they land back. */
