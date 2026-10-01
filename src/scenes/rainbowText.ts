@@ -1,11 +1,11 @@
 import Phaser from "phaser";
 import { INK, OUTLINE_FONT, READABLE_FONT, TITLE_FONT } from "./fonts";
 
-// Rainbow lettering: each letter a different colour, inside a white edge and
-// a dark outer edge. Title lines are Bubble Toy Solid Bold with the Outline
+// Rainbow lettering: each letter a different colour, inside one clean white
+// edge. Title lines are Bubble Toy Solid Bold with the Outline
 // Bold cut drawn over it in ink, which gives every bubble letter its inked
 // contour and shine marks. Sentence lines are in the readable face with the
-// same edges. Drawn on a canvas at twice the size it is shown, so that it
+// same edge. Drawn on a canvas at twice the size it is shown, so that it
 // stays crisp when the game is scaled up on a phone. The same drawing serves
 // the game and the menu.
 
@@ -17,7 +17,7 @@ export const RAINBOW_SCALE = 2;
 /**
  * "plain" is for banners and titles. "bubbly" is for grade call-outs: capital
  * letters that tilt and bounce a little, each with a glossy highlight across
- * its top, over a soft shadow.
+ * its top.
  */
 export type RainbowStyle = "plain" | "bubbly";
 
@@ -86,7 +86,7 @@ function roundOff(canvas: HTMLCanvasElement, radius: number): void {
     blur(tmp, a, false);
   }
   for (let i = 0; i < w * h; i++) {
-    const t = Math.min(1, Math.max(0, (a[i] - 0.38) / 0.24));
+    const t = Math.min(1, Math.max(0, (a[i] - 0.46) / 0.08));
     img.data[i * 4] = 255;
     img.data[i * 4 + 1] = 255;
     img.data[i * 4 + 2] = 255;
@@ -191,18 +191,8 @@ export function drawRainbow(
     roundOff(c, base * factor * 0.45);
     return c;
   };
-  const outer = edgeLayer(bubbly ? 0.36 : 0.32);
-  const inner = edgeLayer(bubbly ? 0.22 : 0.19);
-
-  if (bubbly) {
-    // A soft shadow under the whole word, for depth.
-    const [shadow] = layer(canvas);
-    shadow.getContext("2d")?.drawImage(outer, 0, 0);
-    tint(shadow, "rgba(38, 19, 31, 0.3)");
-    ctx.drawImage(shadow, 0, base * 0.07);
-  }
-  ctx.drawImage(tint(outer, INK), 0, 0);
-  ctx.drawImage(tint(inner, "#ffffff"), 0, 0);
+  const edge = edgeLayer(bubbly ? 0.26 : 0.23);
+  ctx.drawImage(tint(edge, "#ffffff"), 0, 0);
 
   // The letters, with a soft gloss across the top of each bubble letter.
   const [letters, lg] = layer(canvas);

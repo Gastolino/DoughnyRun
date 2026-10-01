@@ -210,7 +210,7 @@ Big titles, single words and scores use Bubble Toy by ana & yvy
 Outline Bold are bundled in `src/assets/fonts`, trimmed to the characters the
 game uses. The two cuts trace the same letters, so every title is drawn as
 rainbow Solid Bold letters with Outline Bold laid over them in ink, inside a
-white ring and a dark outer edge. Sentences, HUD labels and multipliers use
+clean white ring. Sentences, HUD labels and multipliers use
 Comic Neue Bold (from `@fontsource/comic-neue`, under the SIL Open Font
 License), a Comic Sans look-alike that every phone can show. The score and
 death counts use the outline cut alone.
