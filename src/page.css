@@ -468,8 +468,8 @@ body.editing #game {
   min-height: 32px;
   padding: 4px 14px;
 }
-/* The game's lettering in HTML: rainbow bubble letters inside a white and a
-   dark ring, with the outline cut of the same face laid exactly over them. */
+/* The game's lettering in HTML: rainbow bubble letters inside a clean white
+   ring, with the outline cut of the same face laid exactly over them. */
 .bubble {
   position: relative;
   display: inline-block;
@@ -479,11 +479,10 @@ body.editing #game {
   line-height: 1.1;
   isolation: isolate;
 }
-/* The rings sit under every letter at once, so no letter's ring covers its
+/* The ring sits under every letter at once, so no letter's ring covers its
    neighbour. */
 .bubble::before {
-  --ring: 0.06em;
-  --edge: 0.11em;
+  --ring: 0.08em;
   content: attr(data-text);
   position: absolute;
   inset: 0;
@@ -492,9 +491,9 @@ body.editing #game {
   white-space: pre;
   text-shadow:
     var(--ring) 0 0 #fff, calc(-1 * var(--ring)) 0 0 #fff, 0 var(--ring) 0 #fff, 0 calc(-1 * var(--ring)) 0 #fff,
-    0.045em 0.045em 0 #fff, -0.045em 0.045em 0 #fff, 0.045em -0.045em 0 #fff, -0.045em -0.045em 0 #fff,
-    var(--edge) 0 0 #26131f, calc(-1 * var(--edge)) 0 0 #26131f, 0 var(--edge) 0 #26131f, 0 calc(-1 * var(--edge)) 0 #26131f,
-    0.08em 0.08em 0 #26131f, -0.08em 0.08em 0 #26131f, 0.08em -0.08em 0 #26131f, -0.08em -0.08em 0 #26131f;
+    0.055em 0.055em 0 #fff, -0.055em 0.055em 0 #fff, 0.055em -0.055em 0 #fff, -0.055em -0.055em 0 #fff,
+    0.075em 0.03em 0 #fff, -0.075em 0.03em 0 #fff, 0.075em -0.03em 0 #fff, -0.075em -0.03em 0 #fff,
+    0.03em 0.075em 0 #fff, -0.03em 0.075em 0 #fff, 0.03em -0.075em 0 #fff, -0.03em -0.075em 0 #fff;
 }
 .bubble::after {
   content: attr(data-text);

@@ -24,7 +24,7 @@ const BUBBLE_COLORS = ["#ff4a64", "#ff8f2e", "#ffd23f", "#4fd66f", "#4fb3ff", "#
 
 /**
  * A word in the game's lettering: Bubble Toy letters in rainbow colours with
- * a white and a dark ring, and the outline cut laid over them in ink (see
+ * a white ring, and the outline cut laid over them in ink (see
  * .bubble in page.css). The plain text stays in the element for readers.
  */
 export function bubbleText(text: string): HTMLSpanElement {
