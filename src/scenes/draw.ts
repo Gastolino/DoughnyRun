@@ -1,7 +1,8 @@
 import Phaser from "phaser";
 import { VIEW } from "../logic/tuning";
 import { hillsRise, surfaceAt } from "../logic/terrain";
-import type { Boost, LevelData, Ramp, Sausage } from "../logic/types";
+import type { Boost, LevelData, Ramp, Sausage, Theme } from "../logic/types";
+import { drawCityBackdrop, drawCityGround, drawPolice, drawVehicle } from "./city";
 import { COLORS } from "./palette";
 
 // Drawing shared by the level and the editor. Phaser redraws Graphics shapes
@@ -181,7 +182,8 @@ export function drawStar(g: CanvasRenderingContext2D, x: number, y: number, r: n
   g.restore();
 }
 
-export function drawBackdrop(scene: Phaser.Scene, length: number): Phaser.GameObjects.GameObject[] {
+export function drawBackdrop(scene: Phaser.Scene, length: number, theme: Theme = "candy"): Phaser.GameObjects.GameObject[] {
+  if (theme === "city") return drawCityBackdrop(scene);
   const layers = [
     // Far hills: paler, slower, higher in the sky.
     { styles: MOUNTAINS.far, spacing: 330, centreY: VIEW.groundY + 130, scroll: [0.2, 0.3], speed: 0.035, extent: length * 0.2 },
@@ -332,8 +334,14 @@ export function drawGround(scene: Phaser.Scene, level: LevelData): Phaser.GameOb
   const out: Phaser.GameObjects.GameObject[] = [];
   // Deep enough to fill the view when the camera looks down from a height.
   const depth = VIEW.height * 2;
+  if (level.theme === "city") {
+    // The city's pavement, except where hills roll, which keep their glaze.
+    const plain = { ...level, ground: level.ground.filter((g) => !level.hills.some((h) => h.x < g.x + g.width && h.x + h.width > g.x)) };
+    out.push(...drawCityGround(scene, plain));
+  }
   for (const seg of level.ground) {
     if (seg.width <= 0) continue;
+    if (level.theme === "city" && !level.hills.some((h) => h.x < seg.x + seg.width && h.x + h.width > seg.x)) continue;
     const body = scene.add
       .rectangle(seg.x, VIEW.groundY, seg.width, depth, DOUGH_COLOR)
       .setOrigin(0, 0)
@@ -368,6 +376,8 @@ export function drawGround(scene: Phaser.Scene, level: LevelData): Phaser.GameOb
   }
   for (const r of level.ramps) out.push(...drawRamp(scene, level, r));
   for (const b of level.boosts) out.push(...drawBoost(scene, level, b));
+  for (const v of level.vehicles) out.push(drawVehicle(scene, v));
+  if (level.theme === "city") out.push(...drawPolice(scene, level.streets));
   return out;
 }
 
@@ -512,12 +522,17 @@ export function addSkySprinkles(scene: Phaser.Scene): Phaser.GameObjects.Particl
   return sky;
 }
 
-export function drawSausage(scene: Phaser.Scene, s: Sausage): Phaser.GameObjects.Image {
+/**
+ * A sausage with ketchup and mayo in the sugar land; in the city, a New York
+ * hot dog, redder, with a zigzag of mustard.
+ */
+export function drawSausage(scene: Phaser.Scene, s: Sausage, theme: Theme = "candy"): Phaser.GameObjects.Image {
   const r = s.thickness / 2;
-  const key = bake(scene, `sausage-${s.length}x${s.thickness}`, s.length, s.thickness, (g) => {
-    g.fillStyle(COLORS.sausageShade);
+  const city = theme === "city";
+  const key = bake(scene, `sausage-${theme}-${s.length}x${s.thickness}`, s.length, s.thickness, (g) => {
+    g.fillStyle(city ? 0x8e2f22 : COLORS.sausageShade);
     g.fillRoundedRect(0, 0, s.length, s.thickness, r);
-    g.fillStyle(COLORS.sausage);
+    g.fillStyle(city ? 0xc2452e : COLORS.sausage);
     g.fillRoundedRect(1, 0, s.length - 2, s.thickness - 3, r - 1);
     g.fillStyle(COLORS.sausageShine);
     g.fillRoundedRect(r, 3, Math.max(0, s.length - 2 * r), 3, 1.5);
@@ -533,8 +548,21 @@ export function drawSausage(scene: Phaser.Scene, s: Sausage): Phaser.GameObjects
       }
       g.strokePath();
     };
-    drizzle(COLORS.ketchup, 0);
-    drizzle(COLORS.mayo, Math.PI);
+    if (city) {
+      // A mustard zigzag.
+      g.lineStyle(3, 0xffd21f);
+      g.beginPath();
+      const start = r * 0.7;
+      for (let px = start, i = 0; px <= s.length - start; px += 6, i++) {
+        const py = s.thickness * (i % 2 ? 0.3 : 0.6);
+        if (i === 0) g.moveTo(px, py);
+        else g.lineTo(px, py);
+      }
+      g.strokePath();
+    } else {
+      drizzle(COLORS.ketchup, 0);
+      drizzle(COLORS.mayo, Math.PI);
+    }
   });
   return scene.add
     .image(s.x, s.y - r, key)

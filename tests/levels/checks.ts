@@ -1,36 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { isOverVoid } from "../../src/levels/format";
 import { CAMPAIGN } from "../../src/levels/index";
 import { createRunner, stepRunner } from "../../src/logic/runner";
-import { findBypasses, solveLevel, STEPS_PER_DECISION } from "../../src/logic/solver";
+import { solveLevel, STEPS_PER_DECISION } from "../../src/logic/solver";
 import type { SolveResult } from "../../src/logic/solver";
 import { runnerOptionsFor, TOPPINGS } from "../../src/logic/toppings";
 
 // Every campaign level ships only if the solver can finish it with its own
-// topping and thread every sausage in one run. A level with a new topping
-// must also be impossible without it, so that the unlock matters; and on a
-// level with no air jump, no sausage over a void can be avoided.
+// topping. A skipped sausage ends the run, so a finish threads every one. A
+// level that brings in a new topping must also be impossible with the one
+// before it, so that the unlock matters.
 //
 // Each level has its own test file, so that the levels' searches run side by
-// side; the longest takes most of a minute.
+// side.
 
 export function checkLevel(id: string): void {
-  const entry = CAMPAIGN.find((c) => c.id === id);
-  if (!entry) throw new Error(`No campaign level ${id}`);
-  const { level } = entry;
+  const index = CAMPAIGN.findIndex((c) => c.id === id);
+  if (index < 0) throw new Error(`No campaign level ${id}`);
+  const { level } = CAMPAIGN[index];
+  // A topping new to the campaign here is checked against the one before it.
+  const newTopping = !CAMPAIGN.slice(0, index).some((c) => c.level.topping === level.topping);
+  const before = index > 0 && newTopping ? CAMPAIGN[index - 1].level.topping : null;
   const options = runnerOptionsFor(level.topping);
 
   describe(`level ${id}`, () => {
     let solved: SolveResult | undefined;
     const solve = (): SolveResult => (solved ??= solveLevel(level, options));
 
-    it("can be cleared with its topping", () => {
+    // A boss's chase, or long flights with many air jumps, make the search
+    // much larger.
+    it("can be cleared with its topping", { timeout: 240_000 }, () => {
       const result = solve();
-      expect(result.solvable, `stuck near x=${Math.round(result.furthestX)}`).toBe(true);
-    });
-
-    it("lets every sausage be threaded in one run", () => {
-      const result = solveLevel(level, { ...options, mustThread: level.sausages.map((_, i) => i) });
       expect(result.solvable, `stuck near x=${Math.round(result.furthestX)}`).toBe(true);
     });
 
@@ -45,17 +44,12 @@ export function checkLevel(id: string): void {
       expect(s.finished).toBe(true);
     });
 
-    if (TOPPINGS[level.topping].airJumps > 0) {
-      it("cannot be cleared without its topping", () => {
-        expect(solveLevel(level, runnerOptionsFor("plain")).solvable).toBe(false);
-      });
-    } else {
-      const voids = level.sausages.flatMap((s, i) => (isOverVoid(level, s) ? [i] : []));
-      it(`forces every sausage over a void through the hole (${voids.length})`, { timeout: 240_000 }, () => {
-        // Without the sunglasses' free crash, which may deliberately smash one sausage.
-        const bypassed = findBypasses(level, { ...options, shield: false }, voids);
-        const where = [...bypassed].map((i) => `#${i} at x=${level.sausages[i].x}`).join(", ");
-        expect(where, "the doughnut got past these without threading them").toBe("");
+    if (before !== null) {
+      it(`cannot be cleared with the topping before it, ${TOPPINGS[before].name}`, { timeout: 240_000 }, () => {
+        // Without a boss's chase, which only adds ways to lose, so that the
+        // search stays small.
+        const unchased = { ...level, chaser: undefined };
+        expect(solveLevel(unchased, runnerOptionsFor(before)).solvable).toBe(false);
       });
     }
   });

@@ -11,12 +11,16 @@ import type { LevelData } from "../logic/types";
 import { coarsePointer, gameElement, isBlocked, keepAwake, onBlockedChange } from "../platform";
 import { recordFinish } from "../progress";
 import { solveAsync } from "../solveAsync";
+import { isMuted, setMuted, sound } from "../sound";
+import { medalFor, medalTargets } from "../logic/medals";
+import type { Medal } from "../logic/medals";
 import { h, overlay } from "../ui";
 import { ART_HALF_WIDTH, EYES_OFFSET, SHADES_FRAMES } from "./BootScene";
 import { READABLE_FONT, TITLE_FONT } from "./fonts";
-import { showRainbow } from "./rainbowText";
+import { RAINBOW_SCALE, showRainbow } from "./rainbowText";
+import { DentureChaser } from "./boss";
 import { addSkySprinkles, DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
-import { COLORS, SPRINKLE_COLORS } from "./palette";
+import { COLORS, RAINBOW_SPRINKLES, SPRINKLE_COLORS } from "./palette";
 
 /** What the level scene is asked to play, and where it goes afterwards. */
 export interface PlayRequest {
@@ -24,7 +28,7 @@ export interface PlayRequest {
   /** Position in the campaign, for saved progress and the next level. */
   campaignIndex?: number;
   /** Where the Menu button and the end of an editor test lead. */
-  returnTo: "menu" | "editor";
+  returnTo: "menu" | "editor" | "map";
   /** Let the solver play the level. */
   demo?: boolean;
 }
@@ -67,11 +71,16 @@ const GAP_PAUSE_MS = 500;
 
 type Mode = "ready" | "running" | "paused" | "ended";
 
+const MEDAL_TEXT: Record<Medal, string> = { gold: "Gold medal!", silver: "Silver medal", bronze: "Bronze medal" };
+
 const DEATH_TEXT: Record<DeathCause, string> = {
   sausage: "Bonk! The sausage hit the dough.",
   fell: "Down the hole you go.",
   wall: "Splat against the cliff.",
-  missed: "Missed a sausage.",
+  cab: "Honk! Bumped into a cab.",
+  cart: "Clang! Ran into a hot dog cart.",
+  arrested: "Busted! Every sausage goes through the hole.",
+  chomped: "Chomp! The dentures caught up.",
 };
 
 // Draws the pure simulation in src/logic and turns keyboard, mouse and touch
@@ -94,6 +103,12 @@ export class LevelScene extends Phaser.Scene {
   // Where the doughnut was before the latest step, for drawing between steps.
   private prevX = 0;
   private prevY = 0;
+  private prevChaserX = 0;
+  private boss: DentureChaser | null = null;
+  // The sizzle of each sausage passing through the hole, by index.
+  private sizzles = new Map<number, () => void>();
+  private fluff!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private wasHovering = false;
   private deaths = 0;
   private showHitboxes = false;
   private demoInputs: DecisionInput[] | null = null;
@@ -107,6 +122,7 @@ export class LevelScene extends Phaser.Scene {
   private debug!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
   private banner: Phaser.GameObjects.Image | null = null;
+  private medal: Phaser.GameObjects.Image | null = null;
   private hint!: Phaser.GameObjects.Text;
   // Meme sunglasses that drop onto the doughnut's face in top gear.
   private shades!: Phaser.GameObjects.Image;
@@ -124,7 +140,12 @@ export class LevelScene extends Phaser.Scene {
   // Crumbs thrown off by each bite when the doughnut is eaten, in screen space.
   private biteCrumbs!: Phaser.GameObjects.Particles.ParticleEmitter;
   // The doughnut being eaten after a crash, and the timers driving the bites.
-  private eaten: { image: Phaser.GameObjects.RenderTexture; timers: Phaser.Time.TimerEvent[] } | null = null;
+  private eaten: {
+    image: Phaser.GameObjects.RenderTexture;
+    timers: Phaser.Time.TimerEvent[];
+    /** Anything else the death brought on screen, such as the officer's arm. */
+    extras: Phaser.GameObjects.GameObject[];
+  } | null = null;
   // The victory lap at the flag: the doughnut's stand-in image, its sprinkle
   // trail, and the textures drawn for it.
   private victory: { image: Phaser.GameObjects.Image; trail: Phaser.GameObjects.Particles.ParticleEmitter; keys: string[] } | null = null;
@@ -155,11 +176,12 @@ export class LevelScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setScroll(0, 0);
-    addSkySprinkles(this);
-    drawBackdrop(this, this.level.length);
+    if (this.level.theme === "candy") addSkySprinkles(this);
+    drawBackdrop(this, this.level.length, this.level.theme);
     drawGround(this, this.level);
-    this.sausages = this.level.sausages.map((s) => drawSausage(this, s));
+    this.sausages = this.level.sausages.map((s) => drawSausage(this, s, this.level.theme));
     drawFinish(this, this.level.length);
+    this.boss = this.level.chaser ? new DentureChaser(this, this.level) : null;
 
     const topping = this.level.topping;
     this.back = this.add.image(0, 0, `doughnut-back-${topping}`).setDepth(DEPTH.back);
@@ -171,9 +193,22 @@ export class LevelScene extends Phaser.Scene {
     this.glassHop = { v: 0 };
     this.glassSpin = false;
     this.wiggles = new Map();
+    const sprinkleColors = topping === "rainbow" ? RAINBOW_SPRINKLES : SPRINKLE_COLORS;
     this.sprinkles = Array.from({ length: SPRINKLES }, (_, i) =>
-      this.add.image(0, 0, "sprinkle").setTint(SPRINKLE_COLORS[i % SPRINKLE_COLORS.length]),
+      this.add.image(0, 0, "sprinkle").setTint(sprinkleColors[i % sprinkleColors.length]),
     );
+    // Wisps of marshmallow drifting off the doughnut while it floats.
+    this.fluff = this.add
+      .particles(0, 0, "glow", {
+        speedX: { min: -60, max: -10 },
+        speedY: { min: 10, max: 50 },
+        lifespan: 600,
+        scale: { start: 0.5, end: 0.1 },
+        alpha: { start: 0.8, end: 0 },
+        tint: [0xffffff, 0xf0e2ff, 0xffd6ec],
+        frequency: -1,
+      })
+      .setDepth(DEPTH.trail);
     this.debug = this.add.graphics().setDepth(DEPTH.fx);
     this.eaten = null;
     this.victory = null;
@@ -310,6 +345,7 @@ export class LevelScene extends Phaser.Scene {
     this.bindInput();
     this.watchForInterruptions();
     this.addBackButton();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.stopSizzles());
     this.restart();
 
     const demo = this.request.demo || new URLSearchParams(window.location.search).has("demo");
@@ -348,8 +384,7 @@ export class LevelScene extends Phaser.Scene {
       const input = this.demoInputs ? this.demoInput() : { held: this.isHeld(), pressed: this.pressLatch };
       this.pressLatch = false;
       this.stepCount += 1;
-      this.prevX = this.runner.x;
-      this.prevY = this.runner.y;
+      this.holdPrevious();
       const events = stepRunner(this.runner, input, this.level, this.options);
       events.forEach((e) => this.onEvent(e));
     }
@@ -439,28 +474,64 @@ export class LevelScene extends Phaser.Scene {
   }
 
   /** A page button, outside the game area so that pressing it never jumps. */
+  private stopSizzles(): void {
+    this.sizzles.forEach((stop) => stop());
+    this.sizzles.clear();
+  }
+
   private addBackButton(): void {
-    const label = this.request.returnTo === "editor" ? "Back to editor" : "Menu";
-    overlay("level-ui", h("button", { type: "button", class: "back-button", onclick: () => this.leave() }, label));
+    const label = { editor: "Back to editor", map: "Map", menu: "Menu" }[this.request.returnTo];
+    const mute = h("button", { type: "button", class: "back-button mute-button", "aria-pressed": String(isMuted()) }, isMuted() ? "Sound off" : "Sound on") as HTMLButtonElement;
+    const toggle = () => {
+      setMuted(!isMuted());
+      mute.textContent = isMuted() ? "Sound off" : "Sound on";
+      mute.setAttribute("aria-pressed", String(isMuted()));
+    };
+    // Kept from starting a jump: the press belongs to the button.
+    mute.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+    mute.addEventListener("click", toggle);
+    overlay(
+      "level-ui",
+      h("button", { type: "button", class: "back-button", onclick: () => this.leave() }, label),
+      mute,
+    );
+    this.input.keyboard?.on("keydown-M", toggle);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => document.getElementById("level-ui")?.remove());
   }
 
   private leave(): void {
-    this.scene.start(this.request.returnTo);
+    const i = this.request.campaignIndex;
+    if (this.request.returnTo === "map") this.scene.start("map", { world: i === undefined ? 1 : CAMPAIGN[i].world });
+    else this.scene.start(this.request.returnTo);
   }
 
   private verb(): string {
     return coarsePointer() ? "Tap" : "Press";
   }
 
+  /**
+   * Where on screen the camera holds the doughnut. On a boss level it sits
+   * further right, so that the dentures chasing it stay in view.
+   */
+  private screenX(): number {
+    return this.level.chaser ? 470 : VIEW.playerScreenX;
+  }
+
+  /** Remembers where things stand before a step, for drawing between steps. */
+  private holdPrevious(): void {
+    this.prevX = this.runner.x;
+    this.prevY = this.runner.y;
+    this.prevChaserX = this.runner.chaserX;
+  }
+
   private pause(): void {
     if (this.mode !== "running") return;
     this.mode = "paused";
+    this.stopSizzles();
     this.holdPointer = null;
     this.pressLatch = false;
     // Resume drawing from where the doughnut stands, not a step behind it.
-    this.prevX = this.runner.x;
-    this.prevY = this.runner.y;
+    this.holdPrevious();
     this.showBanner(`Paused\n${this.verb()} to continue`, 1);
   }
 
@@ -496,7 +567,7 @@ export class LevelScene extends Phaser.Scene {
         this.holdPointer = null;
         const next = this.nextLevel();
         if (this.runner.finished && next !== null) {
-          this.scene.start("level", { level: CAMPAIGN[next].level, campaignIndex: next, returnTo: "menu" });
+          this.scene.start("level", { level: CAMPAIGN[next].level, campaignIndex: next, returnTo: this.request.returnTo });
           return;
         }
         this.restart();
@@ -507,15 +578,17 @@ export class LevelScene extends Phaser.Scene {
     }
   }
 
+  /** The next level in the same world, if there is one. */
   private nextLevel(): number | null {
     const i = this.request.campaignIndex;
-    return i !== undefined && i + 1 < CAMPAIGN.length ? i + 1 : null;
+    if (i === undefined || i + 1 >= CAMPAIGN.length) return null;
+    return CAMPAIGN[i + 1].world === CAMPAIGN[i].world ? i + 1 : null;
   }
 
   private restart(): void {
+    this.stopSizzles();
     this.runner = createRunner(this.level, this.options);
-    this.prevX = this.runner.x;
-    this.prevY = this.runner.y;
+    this.holdPrevious();
     this.updatesSinceStart = 0;
     this.accumulator = 0;
     this.stepCount = 0;
@@ -532,42 +605,51 @@ export class LevelScene extends Phaser.Scene {
     this.glassDrop.v = 1;
     this.glassHop.v = 0;
     this.glassSpin = false;
-    this.cameras.main.setScroll(this.runner.x - VIEW.playerScreenX, 0);
+    this.cameras.main.setScroll(this.runner.x - this.screenX(), 0);
     this.render(1, 0);
   }
 
   private onEvent(e: RunnerEvent): void {
     switch (e.type) {
       case "jump":
+        sound.jump();
         this.pushOff(1);
         this.hopGlasses();
         this.dust.explode(10, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "airJump":
+        sound.airJump();
         this.pushOff(0.8);
         this.hopGlasses();
         this.puff.explode(14, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "land":
+        sound.land();
         this.squash(1.25, 0.8);
         this.dust.explode(16, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         this.dustGlitter.explode(6, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "launch":
         // Off a ramp's lip: a kick of dust from the edge.
+        sound.launch();
         this.pushOff(0.5);
         this.dust.explode(12, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         break;
       case "boost":
+        sound.boost();
         this.squash(1.3, 0.8);
         this.dustGlitter.explode(14, this.runner.x, this.runner.y + DOUGHNUT.outerRadius);
         this.popText("BOOST!", true);
         break;
       case "grindStart":
+        this.sizzles.set(e.index, sound.grind());
         this.sausages[e.index].setAlpha(0.85);
         this.startWiggle(e.index);
         break;
       case "grindEnd": {
+        this.sizzles.get(e.index)?.();
+        this.sizzles.delete(e.index);
+        sound.grade(e.grade, e.chain);
         this.sausages[e.index].setAlpha(0.5);
         const w = this.wiggles.get(e.index);
         if (w) w.end = this.time.now;
@@ -577,25 +659,35 @@ export class LevelScene extends Phaser.Scene {
         this.popText(`${g.label} +${e.points}${chain}${combo}`, e.grade === "perfect" || e.airCombo > 0);
         break;
       }
-      case "skip":
-        this.sausages[e.index].setAlpha(0.3);
-        this.popText("Skipped: chain lost", false, 0);
-        break;
       case "save":
+        sound.save();
         this.onSave(e);
         break;
       case "die":
         this.deaths += 1;
+        this.stopSizzles();
         this.cameras.main.shake(140, 0.006);
+        if (e.cause === "sausage") sound.bonk();
+        else if (e.cause === "fell") sound.fall();
+        else if (e.cause === "wall") sound.splat();
+        else if (e.cause === "arrested") sound.siren();
+        else sound.clack(0.5);
         this.end();
-        this.eatDoughnut(() => this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`, 0));
+        {
+          const banner = () => this.showBanner(`${DEATH_TEXT[e.cause]}\n${this.verb()} to try again`, 0);
+          if (e.cause === "arrested") this.arrestDoughnut(banner);
+          else this.eatDoughnut(banner);
+        }
         break;
       case "finish": {
+        this.stopSizzles();
+        sound.fanfare();
         this.end();
         // Worked out now, so the result is saved even if the lap is skipped.
         const text = this.finishText();
-        // "Level clear!", the score and the threaded count are titles; the rest are sentences.
-        this.victoryLap(() => this.showBanner(text, 3));
+        // "Level clear!", the score and the medal are titles; the rest are sentences.
+        const medal = medalFor(this.level, this.runner.score);
+        this.victoryLap(() => this.showBanner(text, 3, medal));
         break;
       }
     }
@@ -603,8 +695,13 @@ export class LevelScene extends Phaser.Scene {
 
   private finishText(): string {
     const score = this.runner.score;
-    const total = this.level.sausages.length;
-    const lines = ["Level clear!", `Score ${score}`, `Threaded ${this.runner.threaded.length}/${total}`];
+    const medal = medalFor(this.level, score) as Medal;
+    const lines = ["Level clear!", `Score ${score}`, MEDAL_TEXT[medal]];
+    // What the next medal up asks for, as a sentence after the titles.
+    const t = medalTargets(this.level);
+    const goal: [string, number] | null =
+      medal === "bronze" ? ["silver", t.silver] : medal === "silver" ? ["gold", t.gold] : null;
+    if (goal) lines.push(`${goal[1] - score} more for ${goal[0]}`);
     const index = this.request.campaignIndex;
     if (this.request.demo || this.demoInputs) return lines.join("\n");
     if (index !== undefined) {
@@ -640,7 +737,7 @@ export class LevelScene extends Phaser.Scene {
     const x = this.prevX + (s.x - this.prevX) * alpha;
     const y = this.prevY + (s.y - this.prevY) * alpha;
     const cam = this.cameras.main;
-    cam.scrollX = x - VIEW.playerScreenX;
+    cam.scrollX = x - this.screenX();
     // Ease upwards and back down, rather than snapping with every jump.
     const targetY = Math.min(0, y - CAMERA_TOP);
     const ease = 1 - Math.exp(-deltaMs / 120);
@@ -654,13 +751,27 @@ export class LevelScene extends Phaser.Scene {
       this.options.airJumps > 0
         ? `   Air jump ${"●".repeat(s.airJumpsLeft)}${"○".repeat(this.options.airJumps - s.airJumpsLeft)}`
         : "";
+    const maxFuel = this.options.hover ?? 0;
+    const cells = maxFuel > 0 ? Math.ceil((s.hoverFuel / maxFuel) * 5) : 0;
+    const float = maxFuel > 0 ? `   Float ${"▰".repeat(cells)}${"▱".repeat(5 - cells)}` : "";
     this.hud.setText(`Score ${s.score}${chain}`);
-    this.hudLower.setText(`${air.trim() ? `${air.trim()}   ` : ""}Deaths ${this.deaths}`);
+    const powers = `${air}${float}`.trim();
+    this.hudLower.setText(`${powers ? `${powers}   ` : ""}Deaths ${this.deaths}`);
+    // Floating: fluff trails off, and a soft whoosh starts it.
+    const hovering = s.hovering && this.mode === "running";
+    this.fluff.frequency = hovering ? 40 : -1;
+    this.fluff.setPosition(x - 10, y + DOUGHNUT.outerRadius - 10);
+    if (hovering && !this.wasHovering) sound.float();
+    this.wasHovering = hovering;
     // A boost runs faster than the top gear, so the meter shows it full.
     const boosted = s.boostPad >= 0 && !s.dead;
     this.animateSpeedMeter(boosted ? TUNING.gears.length - 1 : s.gear, deltaMs);
     this.updateShades(s.gear, deltaMs);
     this.updateWiggles(x);
+    if (this.boss) {
+      const cx = this.prevChaserX + (s.chaserX - this.prevChaserX) * alpha;
+      this.boss.update(cx, x, deltaMs, this.mode === "running" || s.dead === "chomped");
+    }
 
     // Food flies up from the point of contact while the doughnut rolls.
     const rolling = this.mode === "running" && s.grounded && !s.dead;
@@ -750,11 +861,10 @@ export class LevelScene extends Phaser.Scene {
   }
 
   /**
-   * After a crash the doughnut hops up into the middle of the screen and is
-   * eaten away: bite after bite takes a scalloped chunk out of it, each
-   * throwing crumbs, until nothing is left. Then the message appears.
+   * Swaps the doughnut for a snapshot of it as it looked, pinned to the
+   * screen, for a death animation to move about.
    */
-  private eatDoughnut(done: () => void): void {
+  private freezeDoughnut(): { image: Phaser.GameObjects.RenderTexture; startX: number; startY: number; W: number; H: number } {
     this.stopEating();
     const cam = this.cameras.main;
     const W = 120;
@@ -766,7 +876,7 @@ export class LevelScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(DEPTH.hud - 2);
-    // A snapshot of the doughnut as it looked: both halves, sprinkles, eyes.
+    // Both halves, sprinkles and eyes.
     const topping = this.level.topping;
     image.stamp(`doughnut-back-${topping}`, undefined, W / 2, H / 2);
     image.stamp(`doughnut-front-${topping}`, undefined, W / 2, H / 2);
@@ -779,8 +889,77 @@ export class LevelScene extends Phaser.Scene {
     }
     image.stamp("doughnut-eyes", undefined, W / 2 + EYES_OFFSET.x, H / 2 + EYES_OFFSET.y);
     this.setDoughnutVisible(false);
+    return { image, startX, startY, W, H };
+  }
+
+  /**
+   * After a skipped sausage the law arrives: an officer's arm in a navy
+   * sleeve with gold buttons rises from below, grabs the doughnut in its
+   * palm and pulls it down out of sight, under flashing red and blue lights.
+   */
+  private arrestDoughnut(done: () => void): void {
+    const { image, startX, startY } = this.freezeDoughnut();
     const timers: Phaser.Time.TimerEvent[] = [];
-    this.eaten = { image, timers };
+    const palmY = startY + DOUGHNUT.outerRadius;
+    const arm = this.add
+      .image(startX, VIEW.height + 320, "cop-arm")
+      .setOrigin(80 / 160, 64 / 300)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.hud - 3);
+    this.eaten = { image, timers, extras: [arm] };
+
+    // Red and blue, turn about, while the arrest lasts.
+    for (let i = 0; i < 6; i++) {
+      timers.push(
+        this.time.delayedCall(i * 230, () => {
+          const red = i % 2 === 0;
+          this.cameras.main.flash(180, red ? 255 : 60, red ? 50 : 110, red ? 60 : 255, true);
+        }),
+      );
+    }
+    this.tweens.chain({
+      targets: arm,
+      tweens: [
+        // Up from below, to the doughnut's underside.
+        { y: palmY, duration: 380, ease: "Back.easeOut" },
+        // The doughnut is caught: a jolt, and a lift together.
+        {
+          y: palmY - 18,
+          duration: 140,
+          ease: "Quad.easeOut",
+          onStart: () => {
+            this.tweens.add({ targets: image, scaleX: 1.15, scaleY: 0.85, duration: 90, yoyo: true });
+            this.tweens.add({ targets: image, y: startY - 18, duration: 140, ease: "Quad.easeOut" });
+          },
+        },
+        // Then a yank: down and out of sight below the screen.
+        {
+          y: VIEW.height + 380,
+          rotation: -0.08,
+          duration: 520,
+          delay: 260,
+          ease: "Back.easeIn",
+          onUpdate: () => {
+            image.setPosition(arm.x, arm.y - DOUGHNUT.outerRadius).setRotation(arm.rotation);
+          },
+          onComplete: () => {
+            this.stopEating();
+            done();
+          },
+        },
+      ],
+    });
+  }
+
+  /**
+   * After a crash the doughnut hops up into the middle of the screen and is
+   * eaten away: bite after bite takes a scalloped chunk out of it, each
+   * throwing crumbs, until nothing is left. Then the message appears.
+   */
+  private eatDoughnut(done: () => void): void {
+    const { image, startX, startY, W, H } = this.freezeDoughnut();
+    const timers: Phaser.Time.TimerEvent[] = [];
+    this.eaten = { image, timers, extras: [] };
 
     // The hop: an arc up and over to the centre, growing as it comes.
     const endX = VIEW.width / 2;
@@ -820,6 +999,7 @@ export class LevelScene extends Phaser.Scene {
           const lx = W / 2 + Math.cos(angle) * 30 * reach;
           const ly = H / 2 + Math.sin(angle) * 40 * reach;
           image.stamp("bite", undefined, lx, ly, { erase: true, angle: Phaser.Math.RadToDeg(angle), scale: 1.05 });
+          sound.crunch();
           // Crumbs fly from where the bite landed on screen.
           const k = image.scaleX;
           const cos = Math.cos(image.rotation);
@@ -986,6 +1166,10 @@ export class LevelScene extends Phaser.Scene {
     this.eaten.timers.forEach((t) => t.remove(false));
     this.tweens.killTweensOf(this.eaten.image);
     this.eaten.image.destroy();
+    this.eaten.extras.forEach((o) => {
+      this.tweens.killTweensOf(o);
+      o.destroy();
+    });
     this.eaten = null;
   }
 
@@ -1084,7 +1268,7 @@ export class LevelScene extends Phaser.Scene {
 
   private popText(text: string, big: boolean, titleLines = Infinity): void {
     // Pinned to the screen, since the camera keeps the doughnut in one place.
-    const x = VIEW.playerScreenX + 40;
+    const x = this.screenX() + 40;
     // Kept below the score display, which the text drifts towards as it fades.
     const size = (big ? 28 : 21) + (coarsePointer() ? 6 : 0);
     const y = Math.max(170, this.runner.y - this.cameras.main.scrollY - DOUGHNUT.outerRadius - 40);
@@ -1100,15 +1284,24 @@ export class LevelScene extends Phaser.Scene {
   }
 
   /** Shows a banner whose first `titleLines` lines are titles in the bubble face. */
-  private showBanner(text: string, titleLines: number): void {
+  private showBanner(text: string, titleLines: number, medal: Medal | null = null): void {
     this.hideBanner();
     const size = coarsePointer() ? 30 : 26;
-    this.banner = showRainbow(this, VIEW.width / 2, VIEW.height / 2 - 50, text, size, DEPTH.hud, true, "plain", titleLines);
+    this.banner = showRainbow(this, VIEW.width / 2, VIEW.height / 2 - 30, text, size, DEPTH.hud, true, "plain", titleLines);
+    if (medal) {
+      // The medal drops in above the banner with a bounce.
+      // Measured at the banner's full size; it is still growing into place.
+      const y = Math.max(60, this.banner.y - this.banner.height / RAINBOW_SCALE / 2 - 44);
+      this.medal = this.add.image(VIEW.width / 2, y, `medal-${medal}`).setScrollFactor(0).setDepth(DEPTH.hud).setScale(0);
+      this.tweens.add({ targets: this.medal, scale: 1, duration: 520, ease: "Back.easeOut" });
+    }
   }
 
   private hideBanner(): void {
     this.banner?.destroy();
     this.banner = null;
+    this.medal?.destroy();
+    this.medal = null;
   }
 
   private drawHitboxes(x: number, y: number): void {

@@ -26,6 +26,9 @@ export const TUNING = {
   // raised sausages.
   apexHangSpeed: 300,
   apexHangGravityFactor: 0.35,
+  // Floating with the marshmallow topping: the fastest the doughnut falls
+  // while the button is held.
+  hoverFallSpeed: 70,
   coyoteTime: 0.1,
   jumpBufferTime: 0.12,
   fixedStep: 1 / 120,
@@ -74,6 +77,13 @@ export const GRIND = {
   // Each grind in an unbroken chain adds this much to the multiplier.
   chainStep: 0.5,
   maxChain: 8,
-  // Gears lost when the doughnut passes a sausage without threading it.
-  skipGears: -1,
+} as const;
+
+// The boss chase. The dentures bite when their front teeth come this close
+// behind the doughnut's centre, about the back of the ring as drawn. Each
+// grind's grade moves them: a perfect shoves them back, anything less lets
+// them lunge closer. Their speed is set per level.
+export const CHASE = {
+  reach: 36,
+  shove: { perfect: -60, great: 180, good: 1000, sloppy: 1000 } as const satisfies Record<Grade, number>,
 } as const;

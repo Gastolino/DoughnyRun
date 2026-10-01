@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildLevel, LevelFormatError, parseLevelFile } from "../src/levels/format";
 import { createRunner, speedOf, stepRunner } from "../src/logic/runner";
-import { findBypasses } from "../src/logic/solver";
 import type { RunnerEvent, RunnerState } from "../src/logic/runner";
-import { boostEnd, surfaceAt } from "../src/logic/terrain";
+import { boostEnd, surfaceAt, VEHICLES } from "../src/logic/terrain";
 import { DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
 import type { LevelData } from "../src/logic/types";
 
@@ -17,6 +16,9 @@ const base: LevelData = {
   ramps: [],
   boosts: [],
   hills: [],
+  vehicles: [],
+  streets: [],
+  theme: "candy",
 };
 const ramp = { x: 600, width: 300, height: 90 };
 const withRamp: LevelData = { ...base, ramps: [ramp] };
@@ -140,25 +142,6 @@ describe("ramp and pad elements", () => {
   });
 });
 
-describe("the bypass search", () => {
-  it("finds a low sausage a full jump can pass over, and not one that blocks the only way across", () => {
-    const level: LevelData = {
-      ...base,
-      length: 4000,
-      ground: [
-        { x: 0, width: 1000 },
-        { x: 1380, width: 800 },
-        { x: 2480, width: 10000 },
-      ],
-      sausages: [
-        { x: 1170, y: 231, length: 40, thickness: 22 },
-        { x: 2310, y: 320, length: 40, thickness: 22 },
-      ],
-    };
-    expect([...findBypasses(level, { airJumps: 0, shield: false }, [0, 1])]).toEqual([1]);
-  });
-});
-
 describe("hills", () => {
   const hills = { x: 600, width: 1200, height: 80, waves: 3 };
   const rolling: LevelData = { ...base, hills: [hills] };
@@ -203,5 +186,52 @@ describe("hills", () => {
       parseLevelFile(file([{ type: "hills", x: 500, width: 800, height: 50, waves: 2 }, { type: "ramp", x: 1200, width: 200, height: 50 }])),
     ).toThrow(/overlap/);
     expect(() => parseLevelFile(file([{ type: "hills", x: 500, width: 800, height: 50, waves: 2.5 }]))).toThrow(/whole/);
+  });
+});
+
+describe("parked vehicles", () => {
+  const withVehicle = (kind: "cab" | "cart"): LevelData => ({ ...base, vehicles: [{ kind, x: 700 }] });
+
+  it("crash a doughnut that rolls into their side", () => {
+    for (const kind of ["cab", "cart"] as const) {
+      const level = withVehicle(kind);
+      const s = createRunner(level);
+      runUntil(s, level, () => false);
+      expect(s.dead).toBe(kind);
+      expect(s.x).toBeCloseTo(700, -1);
+    }
+  });
+
+  it("carry a doughnut that lands on top, and let it roll off the far end", () => {
+    const level = withVehicle("cab");
+    const s = createRunner(level);
+    let pressed = false;
+    let highest = Infinity;
+    runUntil(s, level, (st) => st.x > 1300, (st) => {
+      const press = !pressed && st.x >= 560;
+      if (press) pressed = true;
+      if (st.grounded && st.x > 700 && st.x < 700 + VEHICLES.cab.width) highest = Math.min(highest, st.y + R);
+      return { held: true, pressed: press };
+    });
+    expect(s.dead).toBeNull();
+    // It rolled along the cab's top somewhere between trunk and hood.
+    expect(highest).toBeLessThanOrEqual(VIEW.groundY - VEHICLES.cab.trunk);
+  });
+
+  it("stand on a hot dog cart's flat top", () => {
+    const level = withVehicle("cart");
+    expect(surfaceAt(level, 700 + VEHICLES.cart.width / 2)).toBe(VIEW.groundY - VEHICLES.cart.height);
+  });
+
+  it("parse from a level file, and may not overlap a ramp", () => {
+    const file = (elements: unknown[]) => ({ format: 1, name: "t", length: 4000, topping: "plain", theme: "city", elements });
+    const level = buildLevel(parseLevelFile(file([{ type: "cab", x: 900 }, { type: "cart", x: 300 }, { type: "street", x: 800, width: 600 }])));
+    expect(level.vehicles).toEqual([
+      { kind: "cart", x: 300 },
+      { kind: "cab", x: 900 },
+    ]);
+    expect(level.streets).toEqual([{ x: 800, width: 600 }]);
+    expect(level.theme).toBe("city");
+    expect(() => parseLevelFile(file([{ type: "cab", x: 900 }, { type: "ramp", x: 1000, width: 200, height: 40 }]))).toThrow(/overlap/);
   });
 });

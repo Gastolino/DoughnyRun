@@ -1,7 +1,8 @@
 import { isToppingId } from "../logic/toppings";
 import type { ToppingId } from "../logic/toppings";
 import { DOUGHNUT, VIEW } from "../logic/tuning";
-import type { Boost, GroundSegment, Hills, LevelData, Ramp, Sausage } from "../logic/types";
+import { vehicleWidth } from "../logic/terrain";
+import type { Boost, Chaser, GroundSegment, Hills, LevelData, Ramp, Sausage, Street, Theme, Vehicle } from "../logic/types";
 
 // The level file format, shared by the levels in this folder and by the
 // editor's export. A level is a list of typed elements, so that new kinds of
@@ -13,12 +14,17 @@ import type { Boost, GroundSegment, Hills, LevelData, Ramp, Sausage } from "../l
 //   "name": "Sprinkle Hop",
 //   "length": 6400,
 //   "topping": "plain",
+//   "chaser": { "gap": 900, "speed": 460, "speedEnd": 505 },   (a boss level only)
+//   "theme": "city",                                            (World 2; "candy" by default)
 //   "elements": [
 //     { "type": "gap", "x": 1300, "width": 140 },
 //     { "type": "sausage", "x": 2000, "y": 231, "length": 40 },
 //     { "type": "ramp", "x": 2600, "width": 300, "height": 90 },
 //     { "type": "boost", "x": 3400, "width": 160 },
-//     { "type": "hills", "x": 4000, "width": 1200, "height": 70, "waves": 3 }
+//     { "type": "hills", "x": 4000, "width": 1200, "height": 70, "waves": 3 },
+//     { "type": "street", "x": 5400, "width": 900 },
+//     { "type": "cab", "x": 5600 },
+//     { "type": "cart", "x": 6500 }
 //   ]
 // }
 //
@@ -72,13 +78,46 @@ export interface HillsElement {
   waves: number;
 }
 
-export type LevelElement = GapElement | SausageElement | RampElement | BoostElement | HillsElement;
+/** A parked cab: see Vehicle in logic/types. */
+export interface CabElement {
+  type: "cab";
+  x: number;
+}
+
+/** A parked hot dog cart. */
+export interface CartElement {
+  type: "cart";
+  x: number;
+}
+
+export type VehicleElement = CabElement | CartElement;
+
+/** A street crossing, scenery for the city. */
+export interface StreetElement {
+  type: "street";
+  x: number;
+  width: number;
+}
+
+export type LevelElement =
+  | GapElement
+  | SausageElement
+  | RampElement
+  | BoostElement
+  | HillsElement
+  | CabElement
+  | CartElement
+  | StreetElement;
 
 export interface LevelFile {
   format: number;
   name: string;
   length: number;
   topping: ToppingId;
+  /** The denture chase, on a boss level. */
+  chaser?: Chaser;
+  /** The world's look; the sugar land when absent. */
+  theme?: Theme;
   elements: LevelElement[];
 }
 
@@ -99,6 +138,11 @@ export const LIMITS = {
   minHillsHeight: 10,
   maxHillsHeight: 200,
   maxWaves: 40,
+  minStreetWidth: 100,
+  minChaserGap: 200,
+  maxChaserGap: 3000,
+  minChaserSpeed: 100,
+  maxChaserSpeed: 900,
   /** The solver keeps the running pad in five bits of its state key. */
   maxBoosts: 30,
   /** Highest a sausage may hang: far above anything a double jump reaches. */
@@ -176,22 +220,49 @@ export function parseLevelFile(input: unknown): LevelFile {
           waves,
         };
       }
+      case "cab":
+      case "cart":
+        return { type: e.type, x: num(e, "x", where, 0, length) };
+      case "street":
+        return {
+          type: "street",
+          x: num(e, "x", where, 0, length),
+          width: num(e, "width", where, LIMITS.minStreetWidth, LIMITS.maxLength),
+        };
       default:
         return fail(`${where} has an unknown "type": ${JSON.stringify(e.type)}.`);
     }
   });
-  // Ramps and hills each shape the surface, so no two may overlap.
+  // Ramps, hills and vehicles each shape the surface, so no two may overlap.
   const shaped = elements
-    .filter((e): e is RampElement | HillsElement => e.type === "ramp" || e.type === "hills")
+    .flatMap((e) => {
+      if (e.type === "ramp" || e.type === "hills") return [{ name: e.type === "ramp" ? "ramp" : "hills", x: e.x, width: e.width }];
+      if (e.type === "cab" || e.type === "cart") return [{ name: e.type, x: e.x, width: vehicleWidth({ kind: e.type, x: e.x }) }];
+      return [];
+    })
     .sort((a, b) => a.x - b.x);
   for (let i = 1; i < shaped.length; i++) {
     const [a, b] = [shaped[i - 1], shaped[i]];
-    if (b.x <= a.x + a.width) fail(`The ${a.type === "ramp" ? "ramp" : "hills"} at x = ${a.x} and the ${b.type === "ramp" ? "ramp" : "hills"} at x = ${b.x} overlap.`);
+    if (b.x <= a.x + a.width) fail(`The ${a.name} at x = ${a.x} and the ${b.name} at x = ${b.x} overlap.`);
   }
   if (elements.filter((e) => e.type === "boost").length > LIMITS.maxBoosts) {
     fail(`A level can have at most ${LIMITS.maxBoosts} speed pads.`);
   }
-  return { format: FORMAT_VERSION, name, length, topping, elements };
+  const file: LevelFile = { format: FORMAT_VERSION, name, length, topping, elements };
+  if (root.theme !== undefined) {
+    if (root.theme !== "candy" && root.theme !== "city") fail('The level\'s "theme" must be "candy" or "city".');
+    if (root.theme === "city") file.theme = "city";
+  }
+  if (root.chaser !== undefined) {
+    const c = obj(root.chaser, 'The level\'s "chaser"');
+    const where = "The chaser";
+    file.chaser = {
+      gap: num(c, "gap", where, LIMITS.minChaserGap, LIMITS.maxChaserGap),
+      speed: num(c, "speed", where, LIMITS.minChaserSpeed, LIMITS.maxChaserSpeed),
+      speedEnd: num(c, "speedEnd", where, LIMITS.minChaserSpeed, LIMITS.maxChaserSpeed),
+    };
+  }
+  return file;
 }
 
 /** Turns a level file into a playable level: ground from the gaps, sorted sausages. */
@@ -221,7 +292,29 @@ export function buildLevel(file: LevelFile): LevelData {
     .filter((e): e is HillsElement => e.type === "hills")
     .map((e) => ({ x: e.x, width: e.width, height: e.height, waves: e.waves }))
     .sort((a, b) => a.x - b.x);
-  return { name: file.name, length: file.length, topping: file.topping, ground, sausages, ramps, boosts, hills };
+  const vehicles: Vehicle[] = file.elements
+    .filter((e): e is VehicleElement => e.type === "cab" || e.type === "cart")
+    .map((e) => ({ kind: e.type, x: e.x }))
+    .sort((a, b) => a.x - b.x);
+  const streets: Street[] = file.elements
+    .filter((e): e is StreetElement => e.type === "street")
+    .map((e) => ({ x: e.x, width: e.width }))
+    .sort((a, b) => a.x - b.x);
+  const level: LevelData = {
+    name: file.name,
+    length: file.length,
+    topping: file.topping,
+    ground,
+    sausages,
+    ramps,
+    boosts,
+    hills,
+    vehicles,
+    streets,
+    theme: file.theme ?? "candy",
+  };
+  if (file.chaser) level.chaser = { ...file.chaser };
+  return level;
 }
 
 /** Writes a level file as tidy JSON, one element per line. */
@@ -230,10 +323,4 @@ export function stringifyLevelFile(file: LevelFile): string {
   const lines = elements.map((e) => "    " + JSON.stringify(e));
   const top = JSON.stringify(head, null, 2).slice(0, -2);
   return `${top},\n  "elements": [\n${lines.join(",\n")}\n  ]\n}\n`;
-}
-
-/** True when there is no ground or ramp anywhere beneath the sausage. */
-export function isOverVoid(level: LevelData, s: Sausage): boolean {
-  const under = (a: { x: number; width: number }) => a.x < s.x + s.length && a.x + a.width > s.x;
-  return !level.ground.some(under) && !level.ramps.some(under);
 }

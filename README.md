@@ -12,11 +12,10 @@ onto a stick. While the doughnut overlaps a sausage, the sausage's whole
 thickness must stay inside the hole's vertical span; touching the dough is a
 crash.
 
-Raised sausages hang over voids. Running underneath drops the doughnut into
-the void, and the sausage hangs too high to jump over, so the only way across
-is through the hole. The level tests prove this for every such sausage.
-Sausages over solid ground are optional: skipping one costs the chain and a
-gear.
+Every sausage must go through the hole. A doughnut that passes one without
+threading it, over it or under it, is arrested: an officer's arm in a navy
+sleeve with gold buttons rises from below, grabs it and pulls it down out of
+sight.
 
 ## Grinding, score and speed
 
@@ -72,11 +71,67 @@ next one, and a new topping comes with the level that first needs it.
 | 1-2   | Sugar Rush      | Pink icing: one jump                         | Ramps and pads |
 | 1-3   | Jelly Hills     | Pink icing: one jump                         | Rolling hills  |
 | 1-4   | Glaze Heights   | Chocolate glaze: press again in the air to double jump | Double jump |
+| 1-5   | Chomp Chase     | Chocolate glaze                              | The boss       |
+| B-1   | Sprinkle Summit | Rainbow sprinkles: tap twice more in the air to triple jump | Triple jump |
+| B-2   | Marshmallow Drift | Marshmallow fluff: triple jump, and hold while falling to float down | Float |
+
+The bonus levels open once the boss is beaten. Marshmallow's float lasts up
+to a second per flight, at no more than 70 px/s downwards; letting go ends it
+until the doughnut lands.
 
 In top gear the doughnut wears its sunglasses, and they absorb one crash
 into a sausage: the doughnut smashes through it and drops to first gear.
-Falling into a void or hitting a cliff still ends the run. The level tests prove
-sausages cannot be skipped without spending that free crash.
+A smashed sausage counts as dealt with. Falling into a void, hitting a cliff
+or skipping a sausage still ends the run.
+
+## World 2: The Big Apple
+
+World 2 opens once the World 1 boss is beaten. It is New York downtown at
+dusk: two rows of buildings slide past, the pavement turns to asphalt and a
+crosswalk where the street crosses, and across each street a police car sits
+with its lights flashing. Yellow cabs with a checker stripe park in the
+street and hot dog carts on the pavement. Both are solid: land on a cab's
+trunk, roof or hood, or a cart's counter, and roll along; run into a side and
+the run ends. The sausages are hot dogs with a zigzag of mustard, and a
+doughnut rolling along a cart's counter threads the ones laid on it.
+
+| Level | Name          | Topping           |
+|-------|---------------|-------------------|
+| 2-1   | Taxi Rank     | Chocolate glaze   |
+| 2-2   | Hot Dog Alley | Chocolate glaze   |
+| 2-3   | Rush Hour     | Rainbow sprinkles |
+
+In the level format, `cab` and `cart` elements take an `x`, `street`
+elements an `x` and a `width`, and `"theme": "city"` gives a level the city's
+look. The editor has Cab (C), Hot dog cart (H) and Street (T) tools and a
+Look setting.
+
+## World map
+
+Each world has a map; the menu lists the worlds. World 1, Sugar Land, is a sprinkle path winding over the
+doughnut hills with a glazed stop for each level, in the colour of its
+topping. Finished levels show their medal, levels not yet open wear a
+padlock, and the denture boss waits at the end. Doughny stands on the next
+level to play; tap a stop, or use the arrow keys, and tap again or press
+Enter to play it.
+
+## Medals
+
+Every finish earns a medal, set against the level's perfect score: every
+sausage graded perfect in one unbroken chain (`src/logic/medals.ts`). Gold
+asks for 80% of it and silver for 55%; any finish earns bronze. Air combos
+come on top, so a daring run can beat the perfect score. The finish screen
+shows the medal and how many more points the next one needs.
+
+## The boss
+
+Chomp Chase ends World 1. Wind-up chattering dentures in a police hat run
+after the doughnut, faster than it rolls in any gear below the top, and a
+meter at the top of the screen shows how close they are. Each grind's grade
+moves them: a perfect shoves them back 60 px, a great lets them gain 180, and
+a good or a sloppy grind lets them lunge straight in for the chomp. They never
+fall further behind than they started. The level test proves the level can
+be cleared this way, with every sausage threaded.
 
 Threading a second sausage before touching the ground is an air combo: that
 grind's points are multiplied by the number of grinds in the flight.
@@ -86,10 +141,8 @@ Levels are JSON files in `src/levels`, listed in order in
 `src/levels/format.ts`: a name, a length, a topping and a list of elements,
 each with a `type`: `gap`, `sausage`, `ramp`, `boost` or `hills`. The tests check
 every listed level with the solver: it must be finishable with its topping,
-every sausage must be threadable in one run, a level with a new topping must
-be impossible without it, and on a one-jump level no sausage over a void may
-be avoidable. Each level has its own test file in `tests/levels`, so the
-levels are checked side by side.
+which means threading every sausage, and a level that brings in a new
+topping must be impossible with the topping before it. Each level has its own test file in `tests/levels`.
 
 ## Level editor
 
@@ -104,15 +157,17 @@ Open it from the menu, or add `#editor` to the address. Tools:
   300 by 80 one. Select it and drag the handle on its lip to set its height.
 - **Speed pad** (B): drag along the ground to lay a pad, or click for a
   160 px one.
+- **Denture chase** (bottom bar): turns the level into a boss chase and
+  sets how fast the dentures run at its start and its end.
 - **Hills** (W): drag along the ground to raise rolling hills, or click for
   three waves over 1200 px. Drag the handle on the first crest to set their
   height; the bottom bar sets the number of waves.
 
 Positions snap to 10 px (hold Shift for 1 px), and the bottom bar takes exact
 numbers. Dashed guides show how high the hole reaches when rolling, at the
-top of one jump and at the top of a double jump. **Check** asks the solver
-whether the level can be finished and whether every sausage can be threaded
-in one run, and marks where it got stuck with a red line. **Play** and
+top of one jump, a double jump and a triple jump. **Check** asks the solver
+whether the level can be finished, threading every sausage, and marks where
+it got stuck with a red line. **Play** and
 **Watch solver** test the level, and **Save** adds it to Your levels in the
 menu. The editor keeps a draft between visits and has undo (Ctrl+Z) and redo.
 
@@ -130,12 +185,23 @@ npm run build      # production build in dist/
 ```
 
 Controls: Space, Up, W, click or tap to jump; hold for a higher jump.
-R restarts, H shows the hitboxes and Esc returns to the menu. Add `#demo` to
+R restarts, H shows the hitboxes, M turns sound off and on, and Esc returns
+to the menu. Add `#demo` to
 the URL to watch the level solver play the first level, or `#demo-1-2` for another.
 
 On a phone the whole screen is the jump button, including the bars beside
 the game. The game waits for a first tap, pauses when the phone locks or the
 page is hidden, and asks to be turned sideways in portrait.
+
+## Sound
+
+Every sound is synthesised in the browser with the Web Audio API
+(`src/sound.ts`), so there are no audio files. It starts on the first press,
+since browsers allow sound only after one. Grinds sizzle while a sausage
+slides through, and grade chimes climb the scale as the chain grows. The
+arrest has a siren, the dentures clack faster as they close in, and a
+finish plays a fanfare. The button at the bottom right, or M, turns sound
+off and on, and the game remembers the choice.
 
 ## Look and feel
 

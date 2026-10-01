@@ -1,7 +1,7 @@
 import { cloneRunner, createRunner, PLAIN, speedOf, stepRunner } from "./runner";
-import type { RunnerEvent, RunnerOptions, RunnerState } from "./runner";
-import { slopeAt } from "./terrain";
-import { DOUGHNUT, TUNING, VIEW } from "./tuning";
+import type { RunnerOptions, RunnerState } from "./runner";
+import { slopeAt, vehicleWidth } from "./terrain";
+import { DOUGHNUT, TUNING } from "./tuning";
 import type { LevelData } from "./types";
 
 // Searches for an input sequence that clears a level. It explores depth
@@ -20,7 +20,7 @@ import type { LevelData } from "./types";
 //
 // Most of the search's states are jumps in flight, so it also skips a jump
 // from flat ground when nothing lies within the jump's reach: no sausage,
-// void, ramp, pad or finish. Such a jump lands exactly where rolling would
+// void, ramp, pad, hills, vehicle or finish. Such a jump lands exactly where rolling would
 // have taken the doughnut, in the same gear, so no outcome is lost.
 
 export interface SolveResult {
@@ -127,39 +127,139 @@ export class NumberSet {
 }
 
 /**
- * The rarer parts of a state, present only mid-grind or after the free
- * crash, as text. A grind in progress will change the speed when it ends.
+ * A map from the same numbers to a number, kept in typed arrays for the same
+ * reason as NumberSet. It holds each boss state's best distance so far.
  */
-function extraKey(s: RunnerState): string | null {
-  if (s.grinds.length === 0 && s.smashed.length === 0) return null;
-  const grinds = s.grinds.map((g) => `${g.index}:${Math.round((g.offsetSum / g.steps) * 20)}`).join(";");
-  return `${grinds}|${s.smashed.join(";")}`;
-}
+export class NumberMap {
+  private keys: Float64Array;
+  private values: Float64Array;
+  private mask: number;
+  size = 0;
 
-/** The states a search has seen. */
-class Visited {
-  private seen: NumberSet;
-  private seenRare = new Set<string>();
-
-  constructor(capacity?: number) {
-    this.seen = new NumberSet(capacity);
+  constructor(capacity = 1 << 20) {
+    this.keys = new Float64Array(capacity).fill(-1);
+    this.values = new Float64Array(capacity);
+    this.mask = capacity - 1;
   }
 
-  /** Records a state; false when an identical one was already seen. */
+  private slot(k: number): number {
+    const lo = k >>> 0;
+    const hi = Math.floor(k / 4294967296) >>> 0;
+    let h = Math.imul(lo ^ Math.imul(hi, 0x9e3779b1), 0x85ebca6b);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16;
+    return h & this.mask;
+  }
+
+  get(k: number): number | undefined {
+    let i = this.slot(k);
+    while (this.keys[i] !== -1) {
+      if (this.keys[i] === k) return this.values[i];
+      i = (i + 1) & this.mask;
+    }
+    return undefined;
+  }
+
+  set(k: number, v: number): void {
+    let i = this.slot(k);
+    while (this.keys[i] !== -1 && this.keys[i] !== k) i = (i + 1) & this.mask;
+    if (this.keys[i] === -1) {
+      this.keys[i] = k;
+      this.size++;
+    }
+    this.values[i] = v;
+    if (this.size * 2 > this.keys.length) this.grow();
+  }
+
+  private grow(): void {
+    const oldKeys = this.keys;
+    const oldValues = this.values;
+    this.keys = new Float64Array(oldKeys.length * 2).fill(-1);
+    this.values = new Float64Array(oldKeys.length * 2);
+    this.mask = this.keys.length - 1;
+    this.size = 0;
+    for (let j = 0; j < oldKeys.length; j++) if (oldKeys[j] !== -1) this.set(oldKeys[j], oldValues[j]);
+  }
+}
+
+/**
+ * The rarer parts of a state, present only mid-grind, over a sausage already
+ * threaded, after the free crash or in a flight that can still float, as
+ * text. A grind in progress will
+ * change the speed when it ends.
+ */
+function extraKey(s: RunnerState): string | null {
+  // Sausages threaded but not yet left behind decide whether the doughnut
+  // is arrested when it passes them.
+  // Only sausages not yet left behind matter to what happens next.
+  const pending = s.threaded.filter((i) => i >= s.nextSausage);
+  const smashed = s.smashed.filter((i) => i >= s.nextSausage);
+  // Float left in a flight with the marshmallow topping.
+  const fuel = !s.grounded && s.hoverFuel > 0 ? Math.round(s.hoverFuel * 20) : "";
+  if (s.grinds.length === 0 && smashed.length === 0 && pending.length === 0 && fuel === "") return null;
+  const grinds = s.grinds.map((g) => `${g.index}:${Math.round((g.offsetSum / g.steps) * 20)}`).join(";");
+  return `${grinds}|${smashed.join(";")}|${pending.join(";")}|${fuel}`;
+}
+
+/**
+ * The rarer parts of a state are text; they are folded into a 53-bit number
+ * with the rest of the key, so that rare states live in the same kind of
+ * table as the common ones. Two different states could share a number, which
+ * would cut one of them from the search; with 53 bits that is vanishingly
+ * unlikely, and a route the solver does find is always replayed and checked.
+ */
+function rareKey(key: number, extra: string): number {
+  let h1 = 0x811c9dc5 ^ (key >>> 0);
+  let h2 = 0x9e3779b9 ^ Math.floor(key / 4294967296);
+  for (let i = 0; i < extra.length; i++) {
+    const c = extra.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ c, 0x5bd1e995);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 15), 0x2c1b3c6d);
+  h2 = Math.imul(h2 ^ (h2 >>> 13), 0x297a2d39);
+  return (h1 >>> 0) * 2097152 + ((h2 >>> 0) & 0x1fffff);
+}
+
+/**
+ * The states a search has seen. On a boss level a state also has the
+ * dentures' distance behind, and a state is only worth exploring again when
+ * the dentures are further behind than on any earlier visit: everything the
+ * doughnut can do with them close, it can do with them further away.
+ */
+class Visited {
+  private seen = new NumberSet();
+  private seenRare = new NumberSet();
+  private bestGap = new NumberMap();
+  private bestGapRare = new NumberMap();
+
+  /** Records a state; false when an identical or better one was already seen. */
   firstVisit(state: RunnerState, held: boolean): boolean {
     const key = numericKey(state, held);
     const extra = extraKey(state);
-    if (extra === null) return this.seen.add(key);
-    const full = `${key}|${extra}`;
-    if (this.seenRare.has(full)) return false;
-    this.seenRare.add(full);
-    return true;
+    const k = extra === null ? key : rareKey(key, extra);
+    if (Number.isFinite(state.chaserX)) {
+      const table = extra === null ? this.bestGap : this.bestGapRare;
+      const gap = state.x - state.chaserX;
+      const best = table.get(k);
+      if (best !== undefined && best >= gap - 1) return false;
+      table.set(k, gap);
+      return true;
+    }
+    return (extra === null ? this.seen : this.seenRare).add(k);
   }
 }
 
 /** A press that cannot change the outcome, which the searches skip. */
 function pointlessPress(level: LevelData, s: RunnerState, options: RunnerOptions): boolean {
-  return (!s.grounded && s.coyote <= 0 && s.airJumpsLeft === 0) || jumpIsIdle(level, s, options);
+  const canAct = s.grounded || s.coyote > 0 || s.airJumpsLeft > 0 || s.hoverFuel > 0;
+  return !canAct || jumpIsIdle(level, s, options);
+}
+
+/** Holding the button still matters: it can cut the jump or keep a float going. */
+function holding(input: boolean, s: RunnerState): boolean {
+  return input && (s.canCutJump || (!s.grounded && s.hoverFuel > 0));
 }
 
 /** Stretches of a level where a jump could change something. */
@@ -176,6 +276,7 @@ function featuresOf(level: LevelData): Features {
   for (const r of level.ramps) spans.push([r.x, r.x + r.width]);
   for (const b of level.boosts) spans.push([b.x, b.x + b.width]);
   for (const h of level.hills) spans.push([h.x, h.x + h.width]);
+  for (const v of level.vehicles) spans.push([v.x, v.x + vehicleWidth(v)]);
   for (let i = 0; i < level.ground.length; i++) {
     const end = level.ground[i].x + level.ground[i].width;
     spans.push([end, level.ground[i + 1]?.x ?? end]);
@@ -207,6 +308,9 @@ function airtimeBound(airJumps: number): number {
     ramps: [],
     boosts: [],
     hills: [],
+    vehicles: [],
+    streets: [],
+    theme: "candy",
   };
   const s = createRunner(flat);
   let steps = 0;
@@ -223,7 +327,9 @@ function airtimeBound(airJumps: number): number {
 function jumpIsIdle(level: LevelData, s: RunnerState, options: RunnerOptions): boolean {
   if (!s.grounded || slopeAt(level, s.x) !== 0) return false;
   const lo = s.x - DOUGHNUT.halfWidth - 1;
-  const hi = s.x + speedOf(s) * airtimeBound(options.airJumps) + DOUGHNUT.halfWidth + 1;
+  // A float can stretch a flight by its fuel and a little more.
+  const airtime = airtimeBound(options.airJumps) + (options.hover ?? 0) * 1.5;
+  const hi = s.x + speedOf(s) * airtime + DOUGHNUT.halfWidth + 1;
   const f = featuresOf(level);
   for (let i = 0; i < f.length; i += 2) {
     if (f[i] > hi) break;
@@ -232,17 +338,11 @@ function jumpIsIdle(level: LevelData, s: RunnerState, options: RunnerOptions): b
   return true;
 }
 
-export interface SearchStart {
-  state: RunnerState;
-  held: boolean;
-}
-
-export function solveLevel(level: LevelData, options: RunnerOptions = PLAIN, from?: SearchStart): SolveResult {
-  const start = from ? cloneRunner(from.state) : createRunner(level, options);
-  const stack: Node[] = [{ state: start, held: from?.held ?? false, input: { held: false, pressed: false }, parent: null }];
+export function solveLevel(level: LevelData, options: RunnerOptions = PLAIN): SolveResult {
+  const start = createRunner(level, options);
+  const stack: Node[] = [{ state: start, held: false, input: { held: false, pressed: false }, parent: null }];
   let furthestX = start.x;
-  // A search from a given state is short, so it starts with a small table.
-  const visited = new Visited(from ? 1 << 10 : 1 << 20);
+  const visited = new Visited();
 
   while (stack.length > 0) {
     const node = stack.pop() as Node;
@@ -259,7 +359,7 @@ export function solveLevel(level: LevelData, options: RunnerOptions = PLAIN, fro
       }
       if (state.dead) continue;
 
-      const child: Node = { state, held: input && state.canCutJump, input: decision, parent: node };
+      const child: Node = { state, held: holding(input, state), input: decision, parent: node };
       furthestX = Math.max(furthestX, state.x);
       if (state.finished) {
         return { solvable: true, furthestX, inputs: trace(child) };
@@ -276,55 +376,4 @@ function trace(node: Node): DecisionInput[] {
   const out: DecisionInput[] = [];
   for (let n: Node | null = node; n?.parent; n = n.parent) out.push(n.input);
   return out.reverse();
-}
-
-/**
- * Finds which of the given sausages the doughnut can pass without threading
- * and still finish the level. It explores every state the level allows once,
- * noting each doughnut that passes one of the sausages untouched, and asks
- * whether that doughnut can go on to finish. One exploration answers for all
- * the sausages at once, where a search per sausage would repeat the same
- * ground again and again.
- */
-export function findBypasses(level: LevelData, options: RunnerOptions, indices: readonly number[]): Set<number> {
-  const wanted = new Set(indices);
-  const bypassed = new Set<number>();
-  // Past the last of the sausages, nothing more can be learned.
-  const last = Math.max(-1, ...indices);
-  const start = createRunner(level, options);
-  const stack: SearchStart[] = [{ state: start, held: false }];
-  const visited = new Visited();
-
-  while (stack.length > 0 && bypassed.size < wanted.size) {
-    const node = stack.pop()!;
-    const s0 = node.state;
-    for (const input of [true, false]) {
-      const pressed = input && !node.held;
-      if (pressed && pointlessPress(level, s0, options)) continue;
-      const state = cloneRunner(s0);
-      let skipped: number[] | null = null;
-      for (let i = 0; i < STEPS_PER_DECISION; i++) {
-        const events: RunnerEvent[] = stepRunner(state, { held: input, pressed: pressed && i === 0 }, level, options);
-        for (const e of events) {
-          if (e.type === "skip" && wanted.has(e.index) && !bypassed.has(e.index)) (skipped ??= []).push(e.index);
-        }
-        if (state.dead || state.finished) break;
-      }
-      if (state.dead) continue;
-      const child = { state, held: input && state.canCutJump };
-      if (skipped && !doomed(state) && (state.finished || solveLevel(level, options, child).solvable)) {
-        for (const i of skipped) bypassed.add(i);
-      }
-      if (!state.finished && state.nextSausage <= last && visited.firstVisit(child.state, child.held)) stack.push(child);
-    }
-  }
-  return bypassed;
-}
-
-/**
- * A doughnut already below the ground's surface, with no jump left, can only
- * fall: any ground or ramp ahead meets it side-on.
- */
-function doomed(s: RunnerState): boolean {
-  return !s.grounded && s.coyote <= 0 && s.airJumpsLeft === 0 && s.vy >= 0 && s.y + DOUGHNUT.outerRadius > VIEW.groundY + 2;
 }

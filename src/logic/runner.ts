@@ -1,6 +1,6 @@
-import { boostEnd, rampAt, rampSlope, slopeAt, surfaceAt } from "./terrain";
+import { boostEnd, rampAt, rampSlope, slopeAt, surfaceAt, vehicleAt } from "./terrain";
 import { centreOffset, checkSausage, ringAt } from "./threading";
-import { DOUGHNUT, GRIND, TUNING, VIEW } from "./tuning";
+import { CHASE, DOUGHNUT, GRIND, TUNING, VIEW } from "./tuning";
 import type { Grade } from "./tuning";
 import type { LevelData } from "./types";
 
@@ -11,23 +11,12 @@ import type { LevelData } from "./types";
 export interface RunnerOptions {
   airJumps: number;
   /**
-   * Treats threading this sausage as a crash. Level checks use it to prove
-   * that a sausage cannot be bypassed: with it set, the level must become
-   * impossible.
-   */
-  solidSausage?: number;
-  /**
-   * Treats passing any of these sausages without threading it as a crash.
-   * The editor uses it to ask whether every sausage can be threaded in one run.
-   */
-  mustThread?: readonly number[];
-  /**
    * In top gear the doughnut wears its sunglasses, and they absorb one crash
-   * into a sausage (not a fall or a cliff).
-   * On by default; level checks turn it off to prove sausages cannot be
-   * avoided without spending it.
+   * into a sausage (not a fall, a cliff or a skipped sausage). On by default.
    */
   shield?: boolean;
+  /** Seconds of floating per flight, with the marshmallow topping. */
+  hover?: number;
 }
 
 export const PLAIN: RunnerOptions = { airJumps: 0 };
@@ -39,7 +28,11 @@ export interface RunnerInput {
   pressed: boolean;
 }
 
-export type DeathCause = "sausage" | "fell" | "wall" | "missed";
+/**
+ * How a run ends early. A doughnut that passes a sausage without threading
+ * it is arrested: every sausage must go through the hole.
+ */
+export type DeathCause = "sausage" | "fell" | "wall" | "cab" | "cart" | "arrested" | "chomped";
 
 /** A sausage currently passing through the hole. */
 export interface Grind {
@@ -73,6 +66,12 @@ export interface RunnerState {
   smashed: number[];
   /** Index of the speed pad whose boost is running, or -1. */
   boostPad: number;
+  /** Front teeth of the boss's dentures, or -Infinity on a level without them. */
+  chaserX: number;
+  /** Seconds of float left in this flight. */
+  hoverFuel: number;
+  /** Floating on this step. */
+  hovering: boolean;
   dead: DeathCause | null;
   finished: boolean;
 }
@@ -98,7 +97,6 @@ export type RunnerEvent =
   | { type: "boost"; index: number }
   | { type: "grindStart"; index: number }
   | ({ type: "grindEnd" } & GrindResult)
-  | { type: "skip"; index: number }
   | { type: "die"; cause: DeathCause }
   /** The sunglasses absorbed a crash; the doughnut carries on in first gear. */
   | { type: "save"; index: number }
@@ -111,6 +109,7 @@ const SURFACE_TOLERANCE = 2;
 // How far a surface may fall away within one step and still hold a rolling
 // doughnut: far more than any hill curves, far less than a ramp's lip drops.
 const STICK = 4;
+
 
 export function createRunner(level: LevelData, options: RunnerOptions = PLAIN): RunnerState {
   const x = level.ground[0]?.x ?? 0;
@@ -132,6 +131,9 @@ export function createRunner(level: LevelData, options: RunnerOptions = PLAIN): 
     airGrinds: 0,
     smashed: [],
     boostPad: -1,
+    chaserX: level.chaser ? x + 80 - level.chaser.gap : -Infinity,
+    hoverFuel: options.hover ?? 0,
+    hovering: false,
     dead: null,
     finished: false,
   };
@@ -164,6 +166,14 @@ export function stepRunner(
   const prevX = s.x;
   s.x += speedOf(s) * dt;
   if (s.boostPad >= 0 && s.x > boostEnd(level.boosts[s.boostPad])) s.boostPad = -1;
+  if (level.chaser) {
+    // The dentures speed up as the level goes on, and never drop further
+    // behind than they started.
+    const c = level.chaser;
+    const t = Math.min(1, Math.max(0, s.x / level.length));
+    s.chaserX = Math.max(s.chaserX + (c.speed + (c.speedEnd - c.speed) * t) * dt, s.x - c.gap);
+    if (s.chaserX >= s.x - CHASE.reach) return die(s, "chomped", events);
+  }
   s.buffer = input.pressed ? TUNING.jumpBufferTime : Math.max(0, s.buffer - dt);
   s.coyote = s.grounded ? TUNING.coyoteTime : Math.max(0, s.coyote - dt);
 
@@ -199,6 +209,14 @@ export function stepRunner(
   const hanging = s.canCutJump && Math.abs(s.vy) < TUNING.apexHangSpeed;
   const gravity = hanging ? TUNING.gravity * TUNING.apexHangGravityFactor : TUNING.gravity;
   s.vy = Math.min(s.vy + gravity * dt, TUNING.maxFallSpeed);
+  // Holding the button while falling floats, as long as there is fuel.
+  // Letting go ends the float until the doughnut lands again.
+  if (s.hovering && !input.held) s.hoverFuel = 0;
+  s.hovering = !s.grounded && input.held && s.vy > 0 && s.hoverFuel > 0;
+  if (s.hovering) {
+    s.vy = Math.min(s.vy, TUNING.hoverFallSpeed);
+    s.hoverFuel = Math.max(0, s.hoverFuel - dt);
+  }
   s.y += s.vy * dt;
   const bottom = s.y + R;
 
@@ -206,12 +224,15 @@ export function stepRunner(
   let touching = false;
   if (surface !== null) {
     // Rolling up a ramp or off its lip, the surface moves between steps, so
-    // the doughnut is measured against the lower of the two surfaces.
-    const prevSurface = surfaceAt(level, prevX) ?? surface;
+    // the doughnut is measured against the lower of the two surfaces. A
+    // vehicle's side is a sheer step, so arriving at one is measured against
+    // its top alone.
+    const reachedVehicle = vehicleAt(level, s.x) !== vehicleAt(level, prevX);
+    const prevSurface = reachedVehicle ? surface : (surfaceAt(level, prevX) ?? surface);
     if (prevBottom > Math.max(surface, prevSurface) + SURFACE_TOLERANCE) {
       // Already below the surface when the ground arrived: the doughnut has
-      // run into the side of a cliff.
-      return die(s, "wall", events);
+      // run into the side of a cliff, or of a parked vehicle.
+      return die(s, vehicleAt(level, s.x)?.kind ?? "wall", events);
     }
     // A rolling doughnut hugs a surface that curves away beneath it, as over
     // the top of a hill; only a drop, such as a ramp's lip, throws it clear.
@@ -229,6 +250,7 @@ export function stepRunner(
         s.airGrinds = 0;
         s.canCutJump = false;
         s.airJumpsLeft = options.airJumps;
+        s.hoverFuel = options.hover ?? 0;
       }
     }
   }
@@ -257,7 +279,7 @@ export function stepRunner(
     if (s.smashed.includes(i)) continue;
     const result = checkSausage(ring, sausage);
     const grind = s.grinds.find((g) => g.index === i);
-    if (result === "hit" || (result === "threaded" && options.solidSausage === i)) {
+    if (result === "hit") {
       if (!shielded(s, options)) return die(s, "sausage", events);
       // The sunglasses take the hit: the doughnut smashes through this sausage.
       s.smashed.push(i);
@@ -277,7 +299,11 @@ export function stepRunner(
         events.push({ type: "grindStart", index: i });
       }
     } else if (grind) {
-      events.push(finishGrind(s, grind, level.sausages[i].length));
+      const end = finishGrind(s, grind, level.sausages[i].length);
+      // On a boss level the grade moves the dentures: a perfect shoves them
+      // back, anything less lets them lunge closer.
+      if (level.chaser) s.chaserX = Math.max(s.chaserX + CHASE.shove[end.grade], s.x - level.chaser.gap);
+      events.push(end);
     }
   }
 
@@ -285,12 +311,8 @@ export function stepRunner(
   while (s.nextSausage < level.sausages.length) {
     const sausage = level.sausages[s.nextSausage];
     if (sausage.x + sausage.length > ring.cx - ring.halfWidth) break;
-    if (!s.threaded.includes(s.nextSausage)) {
-      if (options.mustThread?.includes(s.nextSausage)) return die(s, "missed", events);
-      s.chain = 0;
-      shiftGear(s, GRIND.skipGears);
-      events.push({ type: "skip", index: s.nextSausage });
-    }
+    // A sausage smashed by the sunglasses counts as dealt with.
+    if (!s.threaded.includes(s.nextSausage) && !s.smashed.includes(s.nextSausage)) return die(s, "arrested", events);
     s.nextSausage += 1;
   }
 
@@ -301,7 +323,7 @@ export function stepRunner(
   return events;
 }
 
-function finishGrind(s: RunnerState, grind: Grind, length: number): RunnerEvent {
+function finishGrind(s: RunnerState, grind: Grind, length: number): Extract<RunnerEvent, { type: "grindEnd" }> {
   s.grinds = s.grinds.filter((g) => g !== grind);
   const offset = grind.offsetSum / grind.steps;
   const g = gradeFor(offset);

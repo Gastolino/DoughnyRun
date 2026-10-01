@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createRunner, gradeFor, speedOf, stepRunner } from "../src/logic/runner";
 import type { RunnerEvent, RunnerState } from "../src/logic/runner";
 import { solveLevel, STEPS_PER_DECISION } from "../src/logic/solver";
-import { DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
+import { runnerOptionsFor, TOPPINGS } from "../src/logic/toppings";
+import { CHASE, DOUGHNUT, TUNING, VIEW } from "../src/logic/tuning";
 import type { LevelData, Sausage } from "../src/logic/types";
 
-const flat: LevelData = { name: "flat", length: 100000, topping: "plain", ground: [{ x: 0, width: 100000 }], sausages: [], ramps: [], boosts: [], hills: [] };
+const flat: LevelData = { name: "flat", length: 100000, topping: "plain", ground: [{ x: 0, width: 100000 }], sausages: [], ramps: [], boosts: [], hills: [], vehicles: [], streets: [], theme: "candy" };
 const restY = VIEW.groundY - DOUGHNUT.outerRadius;
 const withSausages = (...sausages: Sausage[]): LevelData => ({ ...flat, sausages });
 const cocktail = (x: number, y: number, length = 200): Sausage => ({ x, y, length, thickness: 16 });
@@ -154,25 +155,15 @@ describe("grinding", () => {
     expect(s.gear).toBe(TUNING.gears.length - 1);
   });
 
-  it("breaks the chain and slows down when a sausage is jumped over", () => {
+  it("arrests a doughnut that jumps over a sausage instead of threading it", () => {
     const level = withSausages(cocktail(300, restY, 100), cocktail(900, VIEW.groundY - 8, 40));
     const s = createRunner(level);
     while (s.x < 780) run(s, level, 1);
-    const before = s.gear;
     run(s, level, 1, true, true);
     const events = run(s, level, 120, true);
-    expect(events).toContainEqual({ type: "skip", index: 1 });
-    expect(s.chain).toBe(0);
-    expect(s.dead).toBeNull();
-    expect(before).toBe(2);
-    expect(s.gear).toBe(1);
-  });
-
-  it("treats threading as a crash for the sausage named solid", () => {
-    const level = withSausages(cocktail(300, restY));
-    const s = createRunner(level);
-    for (let i = 0; i < 240; i++) stepRunner(s, { held: false, pressed: false }, level, { airJumps: 0, solidSausage: 0 });
-    expect(s.dead).toBe("sausage");
+    expect(s.threaded).toEqual([0]);
+    expect(s.dead).toBe("arrested");
+    expect(events).toContainEqual({ type: "die", cause: "arrested" });
   });
 });
 
@@ -187,7 +178,7 @@ describe("air jumps and air combos", () => {
       ground: [{ x: 0, width: 800 }, { x: 1600, width: 100000 }],
       sausages: [cocktail(1000, 231, 40), cocktail(1280, 110, 40)].map((z) => ({ ...z, thickness: 22 })),
     };
-    const options = { airJumps: 1, mustThread: [0, 1] };
+    const options = { airJumps: 1 };
     const inputs = solveLevel(level, options).inputs ?? [];
     const s = createRunner(level, options);
     const events: RunnerEvent[] = [];
@@ -210,13 +201,6 @@ describe("air jumps and air combos", () => {
     expect(s.airGrinds).toBe(0); // reset on landing
   });
 
-  it("crashes on a skipped sausage the options say must be threaded", () => {
-    const level = withSausages(cocktail(300, VIEW.groundY - 8, 40));
-    const s = createRunner(level);
-    run(s, level, 30);
-    for (let i = 0; i < 200; i++) stepRunner(s, { held: true, pressed: i === 0 }, level, { airJumps: 0, mustThread: [0] });
-    expect(s.dead).toBe("missed");
-  });
 });
 
 describe("sunglasses' free crash", () => {
@@ -231,7 +215,9 @@ describe("sunglasses' free crash", () => {
     expect(events).toContainEqual({ type: "save", index: 0 });
     expect(s.gear).toBe(0);
     expect(s.smashed).toEqual([0]);
-    expect(events.map((e) => e.type)).toContain("skip");
+    // A smashed sausage counts as dealt with: no arrest follows.
+    run(s, level, 200);
+    expect(s.dead).toBeNull();
   });
 
   it("does not save a fall into a void or a crash into a cliff", () => {
@@ -257,5 +243,99 @@ describe("sunglasses' free crash", () => {
     s.gear = TOP;
     for (let i = 0; i < 200; i++) stepRunner(s, { held: false, pressed: false }, level, { airJumps: 0, shield: false });
     expect(s.dead).toBe("sausage");
+  });
+});
+
+describe("the boss chase", () => {
+  const chased = (speed: number, sausages: Sausage[] = []): LevelData => ({
+    ...flat,
+    length: 20000,
+    sausages,
+    chaser: { gap: 450, speed, speedEnd: speed },
+  });
+
+  it("lets the dentures catch a doughnut slower than them", () => {
+    const level = chased(400);
+    const s = createRunner(level);
+    const events = run(s, level, 1200);
+    expect(s.dead).toBe("chomped");
+    expect(events).toContainEqual({ type: "die", cause: "chomped" });
+    // Caught after closing a 450 px lead at 80 px/s, less the bite's reach.
+    expect(s.x - createRunner(level).x).toBeCloseTo((320 * (450 - CHASE.reach)) / 80, -1);
+  });
+
+  it("keeps them no further behind than they started", () => {
+    const level = chased(100);
+    const s = createRunner(level);
+    run(s, level, 600);
+    expect(s.x - s.chaserX).toBeCloseTo(450, 5);
+  });
+
+  it("moves them by each grind's grade", () => {
+    const level = chased(320, [cocktail(600, restY, 100)]);
+    const s = createRunner(level);
+    s.chaserX = s.x - 300;
+    // Up to the step that ends the grind; the dentures keep pace until then.
+    let end: RunnerEvent | undefined;
+    let before = 0;
+    while (!end && s.x < 2000) {
+      before = s.x - s.chaserX;
+      end = run(s, level, 1).find((e) => e.type === "grindEnd");
+    }
+    expect(end).toMatchObject({ grade: "perfect" });
+    expect(before).toBeCloseTo(300, 5);
+    expect(s.x - s.chaserX).toBeCloseTo(300 - CHASE.shove.perfect, 5);
+  });
+});
+
+describe("new toppings", () => {
+  it("give rainbow sprinkles two jumps in the air", () => {
+    const options = runnerOptionsFor("rainbow");
+    const s = createRunner(flat, options);
+    const types: string[] = [];
+    for (let i = 0; i < 240; i++) {
+      // A tap, and two more taps in the air before it lands.
+      const pressed = i === 0 || i === 12 || i === 24;
+      types.push(...stepRunner(s, { held: false, pressed }, flat, options).map((e) => e.type));
+      if (s.grounded && i > 2) break;
+    }
+    expect(types.filter((t) => t === "airJump")).toHaveLength(2);
+  });
+
+  it("let marshmallow float down slowly while held, until the fuel runs out", () => {
+    const options = runnerOptionsFor("marshmallow");
+    const s = createRunner(flat, options);
+    let floated = 0;
+    let fastest = 0;
+    for (let i = 0; i < 1200 && !(s.grounded && i > 2); i++) {
+      stepRunner(s, { held: true, pressed: i === 0 }, flat, options);
+      if (s.hovering) {
+        floated += TUNING.fixedStep;
+        fastest = Math.max(fastest, s.vy);
+      }
+    }
+    expect(fastest).toBeLessThanOrEqual(TUNING.hoverFallSpeed);
+    expect(floated).toBeCloseTo(TOPPINGS.marshmallow.hover, 1);
+    // Landing fills the fuel again.
+    expect(s.hoverFuel).toBe(TOPPINGS.marshmallow.hover);
+  });
+
+  it("ends a float for the rest of the flight when the button is let go", () => {
+    const options = runnerOptionsFor("marshmallow");
+    const s = createRunner(flat, options);
+    let i = 0;
+    for (; i < 400 && !s.hovering; i++) stepRunner(s, { held: true, pressed: i === 0 }, flat, options);
+    for (let k = 0; k < 10; k++, i++) stepRunner(s, { held: true, pressed: false }, flat, options);
+    stepRunner(s, { held: false, pressed: false }, flat, options);
+    stepRunner(s, { held: true, pressed: true }, flat, options);
+    expect(s.hoverFuel).toBe(0);
+    expect(s.hovering).toBe(false);
+  });
+
+  it("keeps a held float from mattering for toppings without one", () => {
+    const s = createRunner(flat);
+    for (let i = 0; i < 60; i++) stepRunner(s, { held: true, pressed: i === 0 }, flat);
+    expect(s.hovering).toBe(false);
+    expect(s.hoverFuel).toBe(0);
   });
 });

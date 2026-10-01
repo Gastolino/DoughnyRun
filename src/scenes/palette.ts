@@ -8,6 +8,8 @@ export const COLORS = {
   icing: 0xff7eb6,
   glaze: 0x5b3120,
   glazeShine: 0xb07a5a,
+  vanilla: 0xfff3e6,
+  marshmallow: 0xd9c2ff,
   ground: 0x8a5a3c,
   groundTop: 0xfff1f7,
   sausage: 0xc97447,
@@ -21,3 +23,6 @@ export const COLORS = {
 export const SPRINKLE_COLORS = [0xffffff, 0x7ec8ff, 0xfff27e, 0x9dff7e, 0xb58cff, 0xff9f5a] as const;
 
 export const css = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
+
+/** Brighter sprinkles for the rainbow topping. */
+export const RAINBOW_SPRINKLES = [0xff3d8b, 0xff9a2e, 0xffd23f, 0x4fd66f, 0x3fa9ff, 0x9a6bff] as const;
