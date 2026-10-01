@@ -3,7 +3,7 @@
   "name": "Chomp Chase",
   "length": 12000,
   "topping": "glaze",
-  "chaser": { "gap": 450, "speed": 485, "speedEnd": 515 },
+  "chaser": { "gap": 520, "speed": 450, "speedEnd": 485 },
   "elements": [
     { "type": "sausage", "x": 500, "y": 412, "length": 120 },
     { "type": "sausage", "x": 800, "y": 412, "length": 120 },

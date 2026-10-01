@@ -545,12 +545,15 @@ export function drawGround(scene: Phaser.Scene, level: LevelData): Phaser.GameOb
   const out: Phaser.GameObjects.GameObject[] = [];
   // Deep enough to fill the view when the camera looks down from a height.
   const depth = VIEW.height * 2;
+  // The slab the level starts on runs on off the left of the view, so the
+  // start never shows sky under a camera that sits further back.
+  const ground = level.ground.map((g) => (g.x <= 0 ? { ...g, x: g.x - VIEW.width, width: g.width + VIEW.width } : g));
   if (level.theme === "city") {
     // The city's pavement, except where hills roll, which keep their glaze.
-    const plain = { ...level, ground: level.ground.filter((g) => !level.hills.some((h) => h.x < g.x + g.width && h.x + h.width > g.x)) };
+    const plain = { ...level, ground: ground.filter((g) => !level.hills.some((h) => h.x < g.x + g.width && h.x + h.width > g.x)) };
     out.push(...drawCityGround(scene, plain));
   }
-  for (const seg of level.ground) {
+  for (const seg of ground) {
     if (seg.width <= 0) continue;
     if (level.theme === "city" && !level.hills.some((h) => h.x < seg.x + seg.width && h.x + h.width > seg.x)) continue;
     const body = scene.add

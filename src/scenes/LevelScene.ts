@@ -388,9 +388,10 @@ export class LevelScene extends Phaser.Scene {
     const hint = touch
       ? `Tap to jump, hold to jump higher${again}`
       : `Space: jump (hold for height${again})   R: restart   H: hitboxes   Esc: menu`;
-    // The controls, shown only until the run starts.
+    // The controls, shown only until the run starts; below the chase meter
+    // on a boss level.
     this.hint = this.add
-      .text(VIEW.width - 16, 12, hint, {
+      .text(VIEW.width - 16, this.level.chaser ? 48 : 12, hint, {
         fontFamily: READABLE_FONT,
         fontStyle: "bold",
         fontSize: touch ? "20px" : "15px",
@@ -577,7 +578,7 @@ export class LevelScene extends Phaser.Scene {
    * further right, so that the dentures chasing it stay in view.
    */
   private screenX(): number {
-    return this.level.chaser ? 470 : VIEW.playerScreenX;
+    return this.level.chaser ? 620 : VIEW.playerScreenX;
   }
 
   /** Remembers where things stand before a step, for drawing between steps. */

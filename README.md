@@ -125,13 +125,16 @@ shows the medal and how many more points the next one needs.
 
 ## The boss
 
-Chomp Chase ends World 1. Wind-up chattering dentures in a police hat run
-after the doughnut, faster than it rolls in any gear below the top, and a
-meter at the top of the screen shows how close they are. Each grind's grade
-moves them: a perfect shoves them back 60 px, a great lets them gain 180, and
-a good or a sloppy grind lets them lunge straight in for the chomp. They never
-fall further behind than they started. The level test proves the level can
-be cleared this way, with every sausage threaded.
+Chomp Chase ends World 1. Wind-up chattering dentures in a police hat
+follow the doughnut at their own pace, 450 px/s rising to 485 px/s over the
+level, and a meter at the top of the screen shows how close they are. In
+fourth gear or faster, or on a speed pad, the doughnut pulls away; in a
+slower gear the dentures close in. Grinds work on them only through the
+gear: perfects and greats shift up, a sloppy grind or a crash into the
+sunglasses shifts down, and the dentures creep up until they chomp. They
+never fall further behind than they started, so they keep pace on the
+doughnut's heels. The level test proves the level can be cleared this way,
+with every sausage threaded.
 
 Threading a second sausage before touching the ground is an air combo: that
 grind's points are multiplied by the number of grinds in the flight.

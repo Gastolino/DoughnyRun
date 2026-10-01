@@ -80,10 +80,9 @@ export const GRIND = {
 } as const;
 
 // The boss chase. The dentures bite when their front teeth come this close
-// behind the doughnut's centre, about the back of the ring as drawn. Each
-// grind's grade moves them: a perfect shoves them back, anything less lets
-// them lunge closer. Their speed is set per level.
+// behind the doughnut's centre, about the back of the ring as drawn. Their
+// speed is set per level; grinds work on them only through the doughnut's
+// gear, which a good grind raises and a sloppy one drops.
 export const CHASE = {
   reach: 36,
-  shove: { perfect: -60, great: 180, good: 1000, sloppy: 1000 } as const satisfies Record<Grade, number>,
 } as const;
