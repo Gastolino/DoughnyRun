@@ -3,7 +3,7 @@ import { buildLevel } from "../levels/format";
 import { CAMPAIGN } from "../levels/index";
 import { TOPPINGS } from "../logic/toppings";
 import { customLevels, deleteCustomLevel } from "../progress";
-import { h, overlay } from "../ui";
+import { bubbleText, h, overlay } from "../ui";
 import { drawRainbow, RAINBOW_SCALE } from "./rainbowText";
 import type { EditorRequest } from "./EditorScene";
 import type { PlayRequest } from "./LevelScene";
@@ -55,7 +55,7 @@ export class MenuScene extends Phaser.Scene {
         "div",
         { class: "title-screen" },
         this.title(),
-        h("button", { type: "button", class: "start-button", onclick: () => this.start() }, "Start"),
+        h("button", { type: "button", class: "start-button", onclick: () => this.start() }, bubbleText("Start")),
         h("button", { type: "button", class: "small extras-button", onclick: () => this.showMenu() }, "Your levels and the editor"),
       ),
     );
@@ -144,7 +144,7 @@ export class MenuScene extends Phaser.Scene {
       h(
         "div",
         { class: "menu-card", role: "dialog", "aria-label": "Your levels and the editor" },
-        h("h2", {}, "Your levels"),
+        h("h2", {}, bubbleText("Your levels")),
         custom,
         h(
           "div",

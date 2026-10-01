@@ -205,14 +205,28 @@ off and on, and the game remembers the choice.
 
 ## Look and feel
 
-Big titles, single words and scores use Bubble Toy Solid Bold by ana & yvy
-(anayvy.shop), under a licence the project owner bought. It is bundled in
-`src/assets/fonts` and trimmed to the characters the game uses. Sentences use Comic Neue Bold (from `@fontsource/comic-neue`,
-under the SIL Open Font License), because Bubble Toy is hard to read in a
-sentence.
-Banners and call-outs use rainbow letters with a rainbow outline and land
-with a splash of sugar sprinkles. In top gear the doughnut puts on
-rainbow-shimmer sunglasses.
+Big titles, single words and scores use Bubble Toy by ana & yvy
+(anayvy.shop), under a licence the project owner bought. Solid Bold and
+Outline Bold are bundled in `src/assets/fonts`, trimmed to the characters the
+game uses. The two cuts trace the same letters, so every title is drawn as
+rainbow Solid Bold letters with Outline Bold laid over them in ink, inside a
+white ring and a dark outer edge. Sentences, HUD labels and multipliers use
+Comic Neue Bold (from `@fontsource/comic-neue`, under the SIL Open Font
+License), a Comic Sans look-alike that every phone can show. The score and
+death counts use the outline cut alone.
+
+A grind calls out its grade in bubble letters, with the chain under it as
+2x, 3x, 4x and so on, coloured from green up to red as it grows. The speed
+meter's sprinkles stand upright and rock gently. As the gears climb, the
+doughnut's eyes narrow into a squint and the ring leans forward, up to the
+rainbow-shimmer sunglasses at top gear; the lean turns the drawing about the
+hole's centre and leaves the hit box alone. A rainbow trail of sprinkles,
+the same as the victory lap's, streams from behind the ring.
+
+Sugar sprinkles are set in the ground's glaze, and tufts of sprinkle grass
+stand in front of the doughnut and bend as it rolls through them. Cotton
+candy clouds in light blues, on striped paper sticks, drift far off in the
+sugar sky.
 
 ## Single-page build
 

@@ -182,14 +182,133 @@ export function drawStar(g: CanvasRenderingContext2D, x: number, y: number, r: n
   g.restore();
 }
 
+// ---- Cotton candy clouds -----------------------------------------------------------
+//
+// Puffs of cotton candy in light candy blues, each on its paper stick, the
+// stick running down behind the far hills. Sprinkles are stuck in the fluff.
+
+const CLOUD_HUES = [
+  { base: "#a9dcff", light: "#d6efff", shade: "#86c3ef" },
+  { base: "#b5d3ff", light: "#e0ecff", shade: "#91b5ec" },
+  { base: "#a6e6f2", light: "#d5f6fb", shade: "#80cbdc" },
+  { base: "#c3dcf8", light: "#e8f2ff", shade: "#9dbde6" },
+];
+const CLOUD_VARIANTS = 6;
+const CLOUD_W = 240;
+const CLOUD_PUFF_H = 130;
+const CLOUD_STICK = 520;
+
+function makeCloud(scene: Phaser.Scene, variant: number): string {
+  const key = `cloud-${variant}`;
+  if (scene.textures.exists(key)) return key;
+  const tex = scene.textures.createCanvas(key, CLOUD_W, CLOUD_PUFF_H + CLOUD_STICK);
+  if (!tex) return key;
+  const g = tex.getContext();
+  const hue = CLOUD_HUES[variant % CLOUD_HUES.length];
+  const random = seeded(variant * 977 + 3);
+  const cx = CLOUD_W / 2;
+  const cy = CLOUD_PUFF_H * 0.55;
+
+  // The stick: a paper straw with a pink stripe winding round it.
+  const stickTop = cy + 20;
+  g.fillStyle = "#fffaf3";
+  g.strokeStyle = "#d9b9a6";
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.roundRect(cx - 5, stickTop, 10, CLOUD_STICK + CLOUD_PUFF_H - stickTop, 4);
+  g.fill();
+  g.stroke();
+  g.save();
+  g.beginPath();
+  g.rect(cx - 5, stickTop, 10, CLOUD_STICK + CLOUD_PUFF_H);
+  g.clip();
+  g.strokeStyle = "#ff9cc8";
+  g.lineWidth = 3;
+  for (let y = stickTop - 10; y < CLOUD_PUFF_H + CLOUD_STICK; y += 16) {
+    g.beginPath();
+    g.moveTo(cx - 6, y + 8);
+    g.lineTo(cx + 6, y);
+    g.stroke();
+  }
+  g.restore();
+
+  // The fluff: overlapping puffs, a shadowed layer, the body, then highlights.
+  const puffs: { x: number; y: number; r: number }[] = [];
+  const count = 7 + (variant % 3);
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    const across = (t - 0.5) * (CLOUD_W - 90);
+    const arch = Math.sin(t * Math.PI);
+    puffs.push({ x: cx + across + (random() - 0.5) * 10, y: cy + 8 - arch * 26 + (random() - 0.5) * 10, r: 26 + arch * 20 + random() * 8 });
+  }
+  const blob = (dy: number, grow: number, fill: string) => {
+    g.fillStyle = fill;
+    for (const p of puffs) {
+      g.beginPath();
+      g.arc(p.x, p.y + dy, p.r + grow, 0, Math.PI * 2);
+      g.fill();
+    }
+  };
+  blob(0, 2.5, "#ffffff");
+  blob(5, 0, hue.shade);
+  blob(0, -1, hue.base);
+  for (const p of puffs) {
+    const shine = g.createRadialGradient(p.x - p.r * 0.35, p.y - p.r * 0.4, 1, p.x - p.r * 0.2, p.y - p.r * 0.25, p.r * 0.85);
+    shine.addColorStop(0, hue.light);
+    shine.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = shine;
+    g.beginPath();
+    g.arc(p.x, p.y, p.r - 1, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Sprinkles stuck in the fluff.
+  for (let n = 0; n < 16; n++) {
+    const p = puffs[Math.floor(random() * puffs.length)];
+    const a = random() * Math.PI * 2;
+    const d = random() * p.r * 0.7;
+    g.save();
+    g.translate(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
+    g.rotate(random() * Math.PI);
+    g.fillStyle = TUFT_COLORS[Math.floor(random() * TUFT_COLORS.length)];
+    g.beginPath();
+    g.roundRect(-4, -1.4, 8, 2.8, 1.4);
+    g.fill();
+    g.restore();
+  }
+  tex.refresh();
+  return key;
+}
+
+/** Cotton candy clouds drifting far off, slower than the hills. */
+function drawClouds(scene: Phaser.Scene, length: number): Phaser.GameObjects.Image[] {
+  const out: Phaser.GameObjects.Image[] = [];
+  const random = seeded(Math.round(length) + 11);
+  const scroll = 0.12;
+  for (let x = -100 + random() * 200; x < length * scroll + VIEW.width * 1.5; x += 300 + random() * 260) {
+    const variant = Math.floor(random() * CLOUD_VARIANTS);
+    const scale = 0.55 + random() * 0.45;
+    const y = 50 + random() * 120;
+    out.push(
+      scene.add
+        .image(x, y, makeCloud(scene, variant))
+        .setOrigin(0.5, (CLOUD_PUFF_H * 0.55) / (CLOUD_PUFF_H + CLOUD_STICK))
+        .setScale(scale)
+        .setScrollFactor(scroll, 0.15)
+        .setDepth(-2),
+    );
+  }
+  return out;
+}
+
 export function drawBackdrop(scene: Phaser.Scene, length: number, theme: Theme = "candy"): Phaser.GameObjects.GameObject[] {
   if (theme === "city") return drawCityBackdrop(scene);
+  const clouds = drawClouds(scene, length);
   const layers = [
     // Far hills: paler, slower, higher in the sky.
     { styles: MOUNTAINS.far, spacing: 330, centreY: VIEW.groundY + 130, scroll: [0.2, 0.3], speed: 0.035, extent: length * 0.2 },
     { styles: MOUNTAINS.near, spacing: 400, centreY: VIEW.groundY + 235, scroll: [0.45, 0.6], speed: 0.06, extent: length * 0.45 },
   ] as const;
-  const out: Phaser.GameObjects.Image[] = [];
+  const out: Phaser.GameObjects.Image[] = [...clouds];
   const spinning: { base: Phaser.GameObjects.Image; a: Phaser.GameObjects.Image; b: Phaser.GameObjects.Image; speed: number; phase: number }[] = [];
   layers.forEach((layer) => {
     layer.styles.forEach((m) => makeMountain(scene, m));
@@ -324,8 +443,100 @@ function makeGlaze(
   g.moveTo(shineFrom, top(shineFrom) + 3.5);
   for (let px = shineFrom + 2; px <= shineTo; px += 2) g.lineTo(px, top(px) + 3.5);
   g.stroke();
+  // Sugar sprinkles set in the glaze, a shade off its white. Seeded by the
+  // world position, so the same stretch always shows the same sprinkles.
+  const random = seeded(Math.round(x) * 7919 + Math.round(width));
+  for (let n = Math.floor(width / 9); n > 0; n--) {
+    const px = left + 5 + random() * (width - 10);
+    const t = top(px);
+    const py = t + 6 + random() * Math.max(1, edge(px) - t - 10);
+    g.save();
+    g.translate(px, py);
+    g.rotate(random() * Math.PI);
+    g.fillStyle = GLAZE_SPRINKLES[Math.floor(random() * GLAZE_SPRINKLES.length)];
+    g.beginPath();
+    g.roundRect(-3.2, -1.1, 6.4, 2.2, 1.1);
+    g.fill();
+    g.restore();
+  }
   tex.refresh();
   return key;
+}
+
+/** Sprinkles on the ground's glaze: soft tints that sit close to its white. */
+const GLAZE_SPRINKLES = ["#f3a6c6", "#d9b2f0", "#9fd0f0", "#f6c39a", "#a9dfb0", "#f7d77c"];
+
+// ---- Sprinkle grass ------------------------------------------------------------
+//
+// Tufts of sprinkles standing up out of the glaze like patches of grass. They
+// are drawn in front of the doughnut, so it seems to roll through them.
+
+const TUFT_COLORS = ["#ff7eb6", "#ffb347", "#ffe066", "#7ed992", "#7ec8ff", "#b49cff", "#ffffff"];
+const TUFT_VARIANTS = 4;
+
+function makeTuft(scene: Phaser.Scene, variant: number): string {
+  const key = `tuft-${variant}`;
+  if (scene.textures.exists(key)) return key;
+  const w = 56;
+  const h = 34;
+  const tex = scene.textures.createCanvas(key, w, h);
+  if (!tex) return key;
+  const g = tex.getContext();
+  const random = seeded(variant * 101 + 7);
+  const blades = 6 + variant;
+  for (let i = 0; i < blades; i++) {
+    // Fanned out from the root, taller in the middle.
+    const spread = (i / (blades - 1)) * 2 - 1;
+    const angle = spread * 0.75 + (random() - 0.5) * 0.25;
+    const length = 15 + (1 - Math.abs(spread)) * 11 + random() * 5;
+    g.save();
+    g.translate(w / 2 + spread * 12, h - 3);
+    g.rotate(angle);
+    g.fillStyle = "#5a3418";
+    g.beginPath();
+    g.roundRect(-3.4, -length - 0.8, 6.8, length + 1.6, 3.4);
+    g.fill();
+    g.fillStyle = TUFT_COLORS[Math.floor(random() * TUFT_COLORS.length)];
+    g.beginPath();
+    g.roundRect(-2.6, -length, 5.2, length, 2.6);
+    g.fill();
+    g.fillStyle = "rgba(255,255,255,0.55)";
+    g.beginPath();
+    g.roundRect(-1.4, -length + 2, 1.6, length * 0.55, 0.8);
+    g.fill();
+    g.restore();
+  }
+  tex.refresh();
+  return key;
+}
+
+/**
+ * Sprinkle grass along the candy ground, kept clear of ramps, pads and the
+ * ends of each slab. Returns the tufts so the level can rustle them.
+ */
+export function drawSprinkleGrass(scene: Phaser.Scene, level: LevelData): Phaser.GameObjects.Image[] {
+  if (level.theme !== "candy") return [];
+  const out: Phaser.GameObjects.Image[] = [];
+  const random = seeded(level.length + level.ground.length * 31);
+  const clear = (x: number) =>
+    !level.ramps.some((r) => x > r.x - 40 && x < r.x + r.width + 40) &&
+    !level.boosts.some((b) => x > b.x - 40 && x < b.x + b.width + 40) &&
+    !level.vehicles.some((v) => x > v.x - 40 && x < v.x + 200);
+  for (const seg of level.ground) {
+    for (let x = seg.x + 120 + random() * 200; x < seg.x + seg.width - 40; x += 180 + random() * 320) {
+      if (!clear(x)) continue;
+      const y = surfaceAt(level, x);
+      if (y === null) continue;
+      const tuft = scene.add
+        .image(x, y + 5, makeTuft(scene, Math.floor(random() * TUFT_VARIANTS)))
+        .setOrigin(0.5, 1)
+        .setFlipX(random() < 0.5)
+        .setScale(0.85 + random() * 0.35)
+        .setDepth(DEPTH.front + 4.5);
+      out.push(tuft);
+    }
+  }
+  return out;
 }
 
 export function drawGround(scene: Phaser.Scene, level: LevelData): Phaser.GameObjects.GameObject[] {

@@ -8,10 +8,10 @@ import { sound } from "../sound";
 import { h, overlay } from "../ui";
 import { EYES_OFFSET } from "./BootScene";
 import { addSkySprinkles, drawBackdrop } from "./draw";
-import { READABLE_FONT, TITLE_FONT } from "./fonts";
+import { READABLE_FONT } from "./fonts";
 import type { PlayRequest } from "./LevelScene";
 import { COLORS, SPRINKLE_COLORS } from "./palette";
-import { showRainbow } from "./rainbowText";
+import { RAINBOW_SCALE, rainbowTexture, showRainbow } from "./rainbowText";
 
 // A world's map: a path winding over its scenery, with a stop for each
 // level: sprinkles over the doughnut hills in Sugar Land, taxi yellow along
@@ -196,8 +196,8 @@ export class MapScene extends Phaser.Scene {
     this.add.ellipse(p.x, p.y + 8, 112, 40, 0xdca062).setDepth(8).setAlpha(alpha);
     this.add.ellipse(p.x, p.y, 112, 36, glaze.fill).setStrokeStyle(3, glaze.rim).setDepth(9).setAlpha(alpha);
     this.add
-      .text(p.x, p.y + 44, c.id, { fontFamily: TITLE_FONT, fontSize: "22px", color: "#ffffff", stroke: glaze.ink, strokeThickness: 5 })
-      .setOrigin(0.5)
+      .image(p.x, p.y + 46, rainbowTexture(this, c.id, 30))
+      .setScale(1 / RAINBOW_SCALE)
       .setDepth(12)
       .setAlpha(alpha);
     if (boss) {

@@ -15,11 +15,11 @@ import { isMuted, setMuted, sound } from "../sound";
 import { medalFor, medalTargets } from "../logic/medals";
 import type { Medal } from "../logic/medals";
 import { h, overlay } from "../ui";
-import { ART_HALF_WIDTH, EYES_OFFSET, SHADES_FRAMES } from "./BootScene";
-import { READABLE_FONT, TITLE_FONT } from "./fonts";
+import { ART_HALF_WIDTH, EYE_LEVELS, EYES_OFFSET, SHADES_FRAMES } from "./BootScene";
+import { INK, OUTLINE_FONT, READABLE_FONT } from "./fonts";
 import { RAINBOW_SCALE, showRainbow } from "./rainbowText";
 import { DentureChaser } from "./boss";
-import { addSkySprinkles, DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage } from "./draw";
+import { addSkySprinkles, DEPTH, drawBackdrop, drawFinish, drawGround, drawSausage, drawSprinkleGrass } from "./draw";
 import { COLORS, RAINBOW_SPRINKLES, SPRINKLE_COLORS } from "./palette";
 
 /** What the level scene is asked to play, and where it goes afterwards. */
@@ -51,6 +51,53 @@ const GRADE_TEXT: Record<Grade, { label: string; color: string }> = {
   good: { label: "Good", color: "#7a4a70" },
   sloppy: { label: "Sloppy", color: "#8a7a80" },
 };
+
+/** Rainbow sprinkles streaming off behind the doughnut. */
+const VICTORY_TRAIL: Phaser.Types.GameObjects.Particles.ParticleEmitterConfig = {
+  speedX: { min: -140, max: -20 },
+  speedY: { min: -90, max: 90 },
+  gravityY: 120,
+  lifespan: { min: 900, max: 1600 },
+  rotate: { min: 0, max: 360 },
+  scale: { start: 0.9, end: 0.35 },
+  alpha: { start: 1, end: 0 },
+  tint: [0xff5fa2, 0xffa24a, 0xffd23f, 0x6fd66f, 0x4fb3ff, 0xa87bff, 0xffffff],
+  frequency: -1,
+};
+
+/** The forward lean at top gear: about seven degrees. */
+const MAX_LEAN = 0.12;
+
+// Multipliers climb from cool to hot: 2x green, 3x blue, 4x purple, 5x
+// orange, then red.
+const MULTIPLIER_COLORS = ["#3fcf62", "#3aa8ff", "#9b6bff", "#ff8a1f", "#ff3d5a"];
+function multiplierColor(n: number): string {
+  return MULTIPLIER_COLORS[Math.min(MULTIPLIER_COLORS.length - 1, Math.max(0, n - 2))];
+}
+
+/** One HUD row: a lead-in, a label, a number, and a trailing multiplier. */
+interface HudRow {
+  before: Phaser.GameObjects.Text;
+  label: Phaser.GameObjects.Text;
+  /** The number again in white, thickened, behind the ink so it reads on any sky. */
+  halo: Phaser.GameObjects.Text;
+  value: Phaser.GameObjects.Text;
+  after: Phaser.GameObjects.Text;
+}
+
+function layoutHudRow(row: HudRow, before: string, value: string, after: string, afterColor: string | null): void {
+  row.before.setText(before);
+  row.value.setText(value);
+  row.halo.setText(value);
+  row.after.setText(after);
+  if (afterColor) row.after.setColor(afterColor);
+  let x = 16;
+  for (const part of [row.before, row.label, row.value, row.after]) {
+    part.setX(x);
+    if (part === row.value) row.halo.setX(x);
+    if (part.text) x += part.width + (part === row.label ? 6 : 10);
+  }
+}
 
 // The speed meter: one sparkle bit per gear, each its own colour.
 const GEAR_COLORS = [0xff5fa2, 0xffa24a, 0xffd23f, 0x6fd66f, 0x4fb3ff, 0xa87bff];
@@ -120,13 +167,18 @@ export class LevelScene extends Phaser.Scene {
   private sprinkles: Phaser.GameObjects.Image[] = [];
   private sausages: Phaser.GameObjects.Image[] = [];
   private debug!: Phaser.GameObjects.Graphics;
-  private hud!: Phaser.GameObjects.Text;
+  /** The score and deaths rows: Comic labels and outline-face numbers. */
+  private hud!: { score: HudRow; deaths: HudRow };
   private banner: Phaser.GameObjects.Image | null = null;
   private medal: Phaser.GameObjects.Image | null = null;
   private hint!: Phaser.GameObjects.Text;
   // Meme sunglasses that drop onto the doughnut's face in top gear.
   private shades!: Phaser.GameObjects.Image;
   private shadesOn = false;
+  /** How far the ring leans forward, in radians; it eases towards its gear's lean. */
+  private lean = 0;
+  /** Sprinkle grass in front of the doughnut, which bends as it rolls through. */
+  private tufts: Phaser.GameObjects.Image[] = [];
   // 0 on the face, 1 lifted out of view. Its own object so its tween never
   // cancels the hop's, and the other way round.
   private glassDrop = { v: 1 };
@@ -156,7 +208,6 @@ export class LevelScene extends Phaser.Scene {
   private dust!: Phaser.GameObjects.Particles.ParticleEmitter;
   private dustGlitter!: Phaser.GameObjects.Particles.ParticleEmitter;
   private gears: { bit: Phaser.GameObjects.Image; glow: Phaser.GameObjects.Image; baseY: number }[] = [];
-  private hudLower!: Phaser.GameObjects.Text;
   private jumpKeys: Phaser.Input.Keyboard.Key[] = [];
 
   constructor() {
@@ -179,6 +230,7 @@ export class LevelScene extends Phaser.Scene {
     if (this.level.theme === "candy") addSkySprinkles(this);
     drawBackdrop(this, this.level.length, this.level.theme);
     drawGround(this, this.level);
+    this.tufts = drawSprinkleGrass(this, this.level);
     this.sausages = this.level.sausages.map((s) => drawSausage(this, s, this.level.theme));
     drawFinish(this, this.level.length);
     this.boss = this.level.chaser ? new DentureChaser(this, this.level) : null;
@@ -247,16 +299,10 @@ export class LevelScene extends Phaser.Scene {
         emitting: false,
       })
       .setDepth(DEPTH.fx);
+    // The same rainbow sprinkles that stream off the victory lap, thrown
+    // from the back of the ring and drawn behind it.
     this.trail = this.add
-      .particles(0, 0, "sprinkle", {
-        speedX: { min: -80, max: -20 },
-        speedY: { min: -40, max: 40 },
-        lifespan: 400,
-        rotate: { min: 0, max: 360 },
-        alpha: { start: 1, end: 0 },
-        tint: [0xff7eb6, 0x7ec8ff, 0xfff27e, 0x9dff7e],
-        frequency: -1,
-      })
+      .particles(0, 0, "pill", VICTORY_TRAIL)
       .setDepth(DEPTH.trail);
     const kick = {
       speedX: { min: -260, max: -60 },
@@ -287,22 +333,38 @@ export class LevelScene extends Phaser.Scene {
     // Phones show the game at about two thirds of its size, so the text is
     // set larger there, and the hint names the finger rather than keys.
     const touch = coarsePointer();
-    const hudStyle = {
-      fontFamily: TITLE_FONT,
-      fontSize: touch ? "26px" : "20px",
+    // Labels in the readable face; the score and deaths counts in the bubble
+    // face's outline cut alone, ink over a white halo.
+    const labelStyle = {
+      fontFamily: READABLE_FONT,
+      fontStyle: "bold",
+      fontSize: touch ? "24px" : "19px",
       color: COLORS.text,
       stroke: "#ffffff",
       strokeThickness: 4,
+      resolution: 2,
     };
-    this.hud = this.add.text(16, 12, "Score", hudStyle).setScrollFactor(0).setDepth(DEPTH.hud);
-    const line = this.hud.height;
-    const speedLabel = this.add.text(16, 12 + line, "Speed", hudStyle).setScrollFactor(0).setDepth(DEPTH.hud);
-    this.hudLower = this.add.text(16, 12 + line * 2, "", hudStyle).setScrollFactor(0).setDepth(DEPTH.hud);
+    const numberSize = touch ? "32px" : "27px";
+    const numberStyle = { fontFamily: OUTLINE_FONT, fontSize: numberSize, color: INK, stroke: INK, strokeThickness: 1, resolution: 2 };
+    const haloStyle = { fontFamily: OUTLINE_FONT, fontSize: numberSize, color: "#ffffff", stroke: "#ffffff", strokeThickness: 6, resolution: 2 };
+    const text = (x: number, y: number, value: string, style: Phaser.Types.GameObjects.Text.TextStyle) =>
+      this.add.text(x, y, value, style).setOrigin(0, 0.5).setScrollFactor(0).setDepth(DEPTH.hud);
+    const line = (touch ? 24 : 19) * 1.55;
+    const rowY = (row: number) => 12 + line * (row + 0.5);
+    const row = (r: number, label: string): HudRow => ({
+      before: text(16, rowY(r), "", labelStyle),
+      label: text(16, rowY(r), label, labelStyle),
+      halo: text(16, rowY(r), "", haloStyle),
+      value: text(16, rowY(r), "", numberStyle),
+      after: text(16, rowY(r), "", { ...labelStyle, fontSize: touch ? "26px" : "21px" }),
+    });
+    this.hud = { score: row(0, "Score"), deaths: row(2, "Deaths") };
+    const speedLabel = text(16, rowY(1), "Speed", labelStyle);
     const bitSize = line * 1.05;
-    const firstX = 16 + speedLabel.width + bitSize * 0.8;
-    const baseY = 12 + line * 1.5;
+    const firstX = 16 + speedLabel.width + bitSize * 0.45;
+    const baseY = rowY(1);
     this.gears = GEAR_COLORS.map((color, i) => {
-      const x = firstX + i * bitSize * 1.05;
+      const x = firstX + i * bitSize * 0.62;
       const glow = this.add
         .image(x, baseY, "glow")
         .setTint(color)
@@ -311,14 +373,14 @@ export class LevelScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setDepth(DEPTH.hud)
         .setVisible(false);
-      // A sugar sprinkle, lying at its own slant.
+      // A sugar sprinkle, standing on end.
       const bit = this.add
         .image(x, baseY, "pill")
         .setTint(color)
         .setDisplaySize(bitSize * 0.95, bitSize * 0.39)
         .setScrollFactor(0)
         .setDepth(DEPTH.hud)
-        .setRotation(-0.6 + i * 0.35);
+        .setRotation(Math.PI / 2);
       return { bit, glow, baseY };
     });
     const again = this.options.airJumps > 0 ? (touch ? ", tap again in the air" : ", again in the air") : "";
@@ -588,6 +650,7 @@ export class LevelScene extends Phaser.Scene {
   private restart(): void {
     this.stopSizzles();
     this.runner = createRunner(this.level, this.options);
+    this.lean = 0;
     this.holdPrevious();
     this.updatesSinceStart = 0;
     this.accumulator = 0;
@@ -653,10 +716,20 @@ export class LevelScene extends Phaser.Scene {
         this.sausages[e.index].setAlpha(0.5);
         const w = this.wiggles.get(e.index);
         if (w) w.end = this.time.now;
+        // The grade in bubble letters, and under it the chain and any air
+        // combo as plain multipliers whose colour warms as they grow.
         const g = GRADE_TEXT[e.grade];
-        const chain = e.chain > 1 ? `  x${e.chain} chain` : "";
-        const combo = e.airCombo ? `\nAIR COMBO x${e.airCombo}!` : "";
-        this.popText(`${g.label} +${e.points}${chain}${combo}`, e.grade === "perfect" || e.airCombo > 0);
+        const lines = [g.label];
+        const colors: (string | null)[] = [null];
+        if (e.chain > 1) {
+          lines.push(`${e.chain}x`);
+          colors.push(multiplierColor(e.chain));
+        }
+        if (e.airCombo) {
+          lines.push(`air ${e.airCombo}x`);
+          colors.push(multiplierColor(e.airCombo + 1));
+        }
+        this.popText(lines.join("\n"), e.grade === "perfect" || e.airCombo > 0, 1, colors);
         break;
       }
       case "save":
@@ -742,21 +815,29 @@ export class LevelScene extends Phaser.Scene {
     const targetY = Math.min(0, y - CAMERA_TOP);
     const ease = 1 - Math.exp(-deltaMs / 120);
     cam.scrollY += (targetY - cam.scrollY) * (deltaMs > 0 ? ease : 1);
-    this.back.setPosition(x, y);
-    this.front.setPosition(x, y);
+    // Faster gears narrow the eyes and lean the ring forward, a little more
+    // each gear up to the sunglasses. Only the drawing turns, about the
+    // hole's centre, so the hole stays where the runner checks it.
+    const running = this.mode === "running" && !s.dead;
+    const drive = running ? (s.boostPad >= 0 ? TUNING.gears.length - 1 : s.gear) : 0;
+    const targetLean = (drive / (TUNING.gears.length - 1)) * MAX_LEAN;
+    this.lean += (targetLean - this.lean) * (deltaMs > 0 ? 1 - Math.exp(-deltaMs / 160) : 1);
+    const eyeLevel = Math.min(EYE_LEVELS - 1, drive);
+    this.eyes.setTexture(eyeLevel === 0 ? "doughnut-eyes" : `doughnut-eyes-${eyeLevel}`);
+    this.back.setPosition(x, y).setRotation(this.lean);
+    this.front.setPosition(x, y).setRotation(this.lean);
     this.placeEyesAndSprinkles(x, y);
+    this.rustleGrass(x, y, deltaMs);
 
-    const chain = s.chain > 1 ? `   Chain x${s.chain}` : "";
     const air =
       this.options.airJumps > 0
-        ? `   Air jump ${"●".repeat(s.airJumpsLeft)}${"○".repeat(this.options.airJumps - s.airJumpsLeft)}`
+        ? `Air jump ${"●".repeat(s.airJumpsLeft)}${"○".repeat(this.options.airJumps - s.airJumpsLeft)}   `
         : "";
     const maxFuel = this.options.hover ?? 0;
     const cells = maxFuel > 0 ? Math.ceil((s.hoverFuel / maxFuel) * 5) : 0;
-    const float = maxFuel > 0 ? `   Float ${"▰".repeat(cells)}${"▱".repeat(5 - cells)}` : "";
-    this.hud.setText(`Score ${s.score}${chain}`);
-    const powers = `${air}${float}`.trim();
-    this.hudLower.setText(`${powers ? `${powers}   ` : ""}Deaths ${this.deaths}`);
+    const float = maxFuel > 0 ? `Float ${"▰".repeat(cells)}${"▱".repeat(5 - cells)}   ` : "";
+    layoutHudRow(this.hud.score, "", String(s.score), s.chain > 1 ? `${s.chain}x` : "", multiplierColor(s.chain));
+    layoutHudRow(this.hud.deaths, `${air}${float}`, String(this.deaths), "", null);
     // Floating: fluff trails off, and a soft whoosh starts it.
     const hovering = s.hovering && this.mode === "running";
     this.fluff.frequency = hovering ? 40 : -1;
@@ -765,7 +846,7 @@ export class LevelScene extends Phaser.Scene {
     this.wasHovering = hovering;
     // A boost runs faster than the top gear, so the meter shows it full.
     const boosted = s.boostPad >= 0 && !s.dead;
-    this.animateSpeedMeter(boosted ? TUNING.gears.length - 1 : s.gear, deltaMs);
+    this.animateSpeedMeter(boosted ? TUNING.gears.length - 1 : s.gear);
     this.updateShades(s.gear, deltaMs);
     this.updateWiggles(x);
     if (this.boss) {
@@ -780,8 +861,8 @@ export class LevelScene extends Phaser.Scene {
     this.dustGlitter.frequency = rolling ? rate * 3 : -1;
     this.dust.setPosition(x - 4, y + DOUGHNUT.outerRadius - 2);
     this.dustGlitter.setPosition(x - 4, y + DOUGHNUT.outerRadius - 2);
-    this.trail.frequency = this.mode !== "running" ? -1 : boosted ? 10 : s.gear >= 2 ? 120 / s.gear : -1;
-    this.trail.setPosition(x - 10, y);
+    this.trail.frequency = this.mode !== "running" ? -1 : boosted ? 12 : s.gear >= 1 ? 110 / s.gear : -1;
+    this.trail.setPosition(x - ART_HALF_WIDTH * 0.75, y + 6);
 
     this.debug.clear();
     if (this.showHitboxes) this.drawHitboxes(x, y);
@@ -791,14 +872,14 @@ export class LevelScene extends Phaser.Scene {
    * The lit bits turn and bob faster in higher gears. In top gear they glow
    * and a wave runs along them, one bit rising after another, on a loop.
    */
-  private animateSpeedMeter(gear: number, deltaMs: number): void {
+  private animateSpeedMeter(gear: number): void {
     const t = this.time.now / 1000;
     const top = gear === TUNING.gears.length - 1;
-    const dt = deltaMs / 1000;
     this.gears.forEach(({ bit, glow, baseY }, i) => {
       const lit = i <= gear;
-      const spin = lit ? 0.5 + gear * 0.9 : 0.15;
-      bit.rotation += spin * dt;
+      // Upright, rocking a little from side to side; livelier when lit.
+      const sway = lit ? 0.1 + gear * 0.02 : 0.05;
+      bit.setRotation(Math.PI / 2 + Math.sin(t * (2 + gear * 0.6) + i * 1.3) * sway);
       let y: number;
       if (top) {
         y = baseY - bit.displayHeight * 0.45 * Math.max(0, Math.sin(t * 5 - i * 0.75));
@@ -816,18 +897,51 @@ export class LevelScene extends Phaser.Scene {
     [this.back, this.front, this.eyes, ...this.sprinkles].forEach((o) => o.setVisible(visible));
   }
 
+  /**
+   * Tufts the doughnut is rolling through are pushed flat ahead of it, then
+   * spring back up behind it.
+   */
+  private rustleGrass(x: number, y: number, deltaMs: number): void {
+    const ease = deltaMs > 0 ? 1 - Math.exp(-deltaMs / 90) : 1;
+    const bottom = y + DOUGHNUT.outerRadius;
+    for (const tuft of this.tufts) {
+      const d = tuft.x - x;
+      if (d < -400 || d > VIEW.width) continue;
+      const touching = Math.abs(d) < ART_HALF_WIDTH + 10 && bottom > tuft.y - 30;
+      const target = touching ? Phaser.Math.Clamp(-d / (ART_HALF_WIDTH + 10), -1, 1) * 0.5 + 0.25 : 0;
+      tuft.rotation += (target - tuft.rotation) * ease;
+      if (!touching && Math.abs(tuft.rotation) > 0.01) tuft.rotation += Math.sin(this.time.now / 60) * 0.02 * Math.abs(tuft.rotation);
+    }
+  }
+
+  /** A sprinkle's place on the ring as it would be without the lean. */
+  private unlean(o: Phaser.GameObjects.Image): [number, number] {
+    const dx = o.x - this.back.x;
+    const dy = o.y - this.back.y;
+    const c = Math.cos(-this.lean);
+    const n = Math.sin(-this.lean);
+    return [dx * c - dy * n, dx * n + dy * c];
+  }
+
   private placeEyesAndSprinkles(x: number, y: number): void {
-    // Follow the squash and stretch of the ring itself.
+    // Follow the squash and stretch of the ring itself, and its lean.
     const sx = this.back.scaleX;
     const sy = this.back.scaleY;
-    this.eyes.setPosition(x + EYES_OFFSET.x * sx, y + EYES_OFFSET.y * sy).setScale(sx, sy);
+    const cosL = Math.cos(this.lean);
+    const sinL = Math.sin(this.lean);
+    const at = (dx: number, dy: number): [number, number] => [x + dx * cosL - dy * sinL, y + dx * sinL + dy * cosL];
+    this.eyes
+      .setPosition(...at(EYES_OFFSET.x * sx, EYES_OFFSET.y * sy))
+      .setScale(sx, sy)
+      .setRotation(this.lean);
     // The sunglasses sit over the eyes, dropping in from above.
     // On a jump they lift clear of the eyes, tilting, then land back.
     const lift = this.glassDrop.v * 140 + this.glassHop.v * 30;
+    const [gx, gy] = at((EYES_OFFSET.x + 2) * sx, (EYES_OFFSET.y + 1) * sy);
     this.shades
-      .setPosition(x + (EYES_OFFSET.x + 2) * sx, y + (EYES_OFFSET.y + 1) * sy - lift)
+      .setPosition(gx, gy - lift)
       .setScale(sx * 1.5, sy * 1.5)
-      .setRotation(-0.35 * this.glassHop.v + (this.glassSpin ? this.glassDrop.v * 7 : 0))
+      .setRotation(this.lean - 0.35 * this.glassHop.v + (this.glassSpin ? this.glassDrop.v * 7 : 0))
       .setAlpha(1 - this.glassDrop.v * 0.6)
       .setVisible(this.glassDrop.v < 1 && this.eyes.visible);
     const roll = x / ROLL_RADIUS;
@@ -836,9 +950,9 @@ export class LevelScene extends Phaser.Scene {
       const cos = Math.cos(a);
       const sin = Math.sin(a);
       sprinkle
-        .setPosition(x + 2 * sx + SPRINKLE_RX * cos * sx, y + SPRINKLE_RY * sin * sy)
+        .setPosition(...at(2 * sx + SPRINKLE_RX * cos * sx, SPRINKLE_RY * sin * sy))
         // Lying along the ring, and behind a passing sausage on the far half.
-        .setRotation(Math.atan2(SPRINKLE_RY * cos, -SPRINKLE_RX * sin) + (i % 3) * 0.6)
+        .setRotation(this.lean + Math.atan2(SPRINKLE_RY * cos, -SPRINKLE_RX * sin) + (i % 3) * 0.6)
         .setDepth(cos < 0 ? DEPTH.back + 1 : DEPTH.front + 1);
     });
   }
@@ -882,8 +996,9 @@ export class LevelScene extends Phaser.Scene {
     image.stamp(`doughnut-front-${topping}`, undefined, W / 2, H / 2);
     for (const s of this.sprinkles) {
       if (s.depth < DEPTH.front) continue;
-      image.stamp("sprinkle", undefined, W / 2 + (s.x - this.back.x), H / 2 + (s.y - this.back.y), {
-        angle: Phaser.Math.RadToDeg(s.rotation),
+      const [dx, dy] = this.unlean(s);
+      image.stamp("sprinkle", undefined, W / 2 + dx, H / 2 + dy, {
+        angle: Phaser.Math.RadToDeg(s.rotation - this.lean),
         tint: s.tintTopLeft,
       });
     }
@@ -1053,8 +1168,9 @@ export class LevelScene extends Phaser.Scene {
     for (const s of this.sprinkles) {
       if (s.depth < DEPTH.front) continue;
       ctx.save();
-      ctx.translate(cx + (s.x - this.back.x), cy + (s.y - this.back.y));
-      ctx.rotate(s.rotation);
+      const [dx, dy] = this.unlean(s);
+      ctx.translate(cx + dx, cy + dy);
+      ctx.rotate(s.rotation - this.lean);
       ctx.fillStyle = `#${s.tintTopLeft.toString(16).padStart(6, "0")}`;
       ctx.beginPath();
       ctx.roundRect(-4, -1.5, 8, 3, 1.5);
@@ -1084,18 +1200,7 @@ export class LevelScene extends Phaser.Scene {
     this.setDoughnutVisible(false);
     const image = this.add.image(x, y, upright).setDepth(DEPTH.front + 5);
     const trail = this.add
-      .particles(0, 0, "pill", {
-        speedX: { min: -140, max: -20 },
-        speedY: { min: -90, max: 90 },
-        gravityY: 120,
-        lifespan: { min: 900, max: 1600 },
-        rotate: { min: 0, max: 360 },
-        scale: { start: 0.9, end: 0.35 },
-        alpha: { start: 1, end: 0 },
-        tint: [0xff5fa2, 0xffa24a, 0xffd23f, 0x6fd66f, 0x4fb3ff, 0xa87bff, 0xffffff],
-        frequency: -1,
-        quantity: 3,
-      })
+      .particles(0, 0, "pill", { ...VICTORY_TRAIL, quantity: 3 })
       .setDepth(DEPTH.front + 4);
     this.victory = { image, trail, keys: [upright, italic] };
 
@@ -1266,13 +1371,13 @@ export class LevelScene extends Phaser.Scene {
     this.tweens.add({ targets, scaleX: 1, scaleY: 1, duration: 160, ease: "Quad.easeOut" });
   }
 
-  private popText(text: string, big: boolean, titleLines = Infinity): void {
+  private popText(text: string, big: boolean, titleLines = Infinity, lineColors: (string | null)[] = []): void {
     // Pinned to the screen, since the camera keeps the doughnut in one place.
     const x = this.screenX() + 40;
     // Kept below the score display, which the text drifts towards as it fades.
-    const size = (big ? 28 : 21) + (coarsePointer() ? 6 : 0);
+    const size = (big ? 34 : 27) + (coarsePointer() ? 6 : 0);
     const y = Math.max(170, this.runner.y - this.cameras.main.scrollY - DOUGHNUT.outerRadius - 40);
-    const t = showRainbow(this, x, y, text, size, DEPTH.fx, big, "bubbly", titleLines);
+    const t = showRainbow(this, x, y, text, size, DEPTH.fx, big, "bubbly", titleLines, lineColors);
     const key = t.texture.key;
     const done = () => {
       t.destroy();
