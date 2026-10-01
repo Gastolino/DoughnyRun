@@ -167,8 +167,10 @@ export function stepRunner(
   s.x += speedOf(s) * dt;
   if (s.boostPad >= 0 && s.x > boostEnd(level.boosts[s.boostPad])) s.boostPad = -1;
   if (level.chaser) {
-    // The dentures speed up as the level goes on, and never drop further
-    // behind than they started.
+    // The dentures run at their own pace, rising a little over the level.
+    // A doughnut in a fast gear pulls away, a slow one is caught; they never
+    // drop further behind than they started, so they keep pace at that
+    // distance rather than falling out of the chase.
     const c = level.chaser;
     const t = Math.min(1, Math.max(0, s.x / level.length));
     s.chaserX = Math.max(s.chaserX + (c.speed + (c.speedEnd - c.speed) * t) * dt, s.x - c.gap);
@@ -299,11 +301,7 @@ export function stepRunner(
         events.push({ type: "grindStart", index: i });
       }
     } else if (grind) {
-      const end = finishGrind(s, grind, level.sausages[i].length);
-      // On a boss level the grade moves the dentures: a perfect shoves them
-      // back, anything less lets them lunge closer.
-      if (level.chaser) s.chaserX = Math.max(s.chaserX + CHASE.shove[end.grade], s.x - level.chaser.gap);
-      events.push(end);
+      events.push(finishGrind(s, grind, level.sausages[i].length));
     }
   }
 

@@ -64,7 +64,8 @@ export interface Boost {
 /**
  * The boss chase: wind-up dentures that start `gap` pixels behind the
  * doughnut and run at a speed rising from `speed` to `speedEnd` over the
- * level. They never fall further behind than they started, and when they
+ * level, so a doughnut in a faster gear pulls away and a slower one is
+ * caught. They never fall further behind than they started, and when they
  * reach the doughnut they chomp it.
  */
 export interface Chaser {

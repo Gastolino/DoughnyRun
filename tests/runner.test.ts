@@ -271,11 +271,11 @@ describe("the boss chase", () => {
     expect(s.x - s.chaserX).toBeCloseTo(450, 5);
   });
 
-  it("moves them by each grind's grade", () => {
-    const level = chased(320, [cocktail(600, restY, 100)]);
+  it("lets a doughnut in a faster gear pull away, without moving them on a grind", () => {
+    const level = chased(380, [cocktail(600, restY, 100)]);
     const s = createRunner(level);
     s.chaserX = s.x - 300;
-    // Up to the step that ends the grind; the dentures keep pace until then.
+    // A perfect grind shifts up two gears, to 400 px/s against their 380.
     let end: RunnerEvent | undefined;
     let before = 0;
     while (!end && s.x < 2000) {
@@ -283,8 +283,12 @@ describe("the boss chase", () => {
       end = run(s, level, 1).find((e) => e.type === "grindEnd");
     }
     expect(end).toMatchObject({ grade: "perfect" });
-    expect(before).toBeCloseTo(300, 5);
-    expect(s.x - s.chaserX).toBeCloseTo(300 - CHASE.shove.perfect, 5);
+    // The grind itself does not move them: on that step the gap changes
+    // only by the speeds, the doughnut still in first gear at 320 px/s.
+    expect(s.x - s.chaserX).toBeCloseTo(before + (TUNING.gears[0] - 380) * TUNING.fixedStep, 3);
+    const after = s.x - s.chaserX;
+    run(s, level, 120);
+    expect(s.x - s.chaserX).toBeGreaterThan(after);
   });
 });
 
