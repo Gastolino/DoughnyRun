@@ -220,8 +220,9 @@ A grind calls out its grade in bubble letters, with the chain under it as
 meter's sprinkles stand upright and rock gently. As the gears climb, the
 doughnut's eyes narrow into a squint and the ring leans forward, up to the
 rainbow-shimmer sunglasses at top gear; the lean turns the drawing about the
-hole's centre and leaves the hit box alone. A rainbow trail of sprinkles,
-the same as the victory lap's, streams from behind the ring.
+hole's centre and leaves the hit box alone. While the doughnut rolls on
+the ground, a rainbow trail of sprinkles, the same as the victory lap's,
+kicks up from where the ring touches the ground; in the air there is none.
 
 Sugar sprinkles are set in the ground's glaze, and tufts of sprinkle grass
 stand in front of the doughnut and bend as it rolls through them. Cotton

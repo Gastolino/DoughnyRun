@@ -299,11 +299,12 @@ export class LevelScene extends Phaser.Scene {
         emitting: false,
       })
       .setDepth(DEPTH.fx);
-    // The same rainbow sprinkles that stream off the victory lap, thrown
-    // from the back of the ring and drawn behind it.
+    // The same rainbow sprinkles that stream off the victory lap, kicked up
+    // backwards from the ground under the ring and drawn behind it.
     this.trail = this.add
-      .particles(0, 0, "pill", VICTORY_TRAIL)
-      .setDepth(DEPTH.trail);
+      .particles(0, 0, "pill", { ...VICTORY_TRAIL, speedY: { min: -130, max: -20 }, gravityY: 260, lifespan: { min: 600, max: 1100 } })
+      // Behind the ground too, so sprinkles that fall back sink out of sight.
+      .setDepth(DEPTH.ground - 0.5);
     const kick = {
       speedX: { min: -260, max: -60 },
       speedY: { min: -280, max: -90 },
@@ -861,8 +862,9 @@ export class LevelScene extends Phaser.Scene {
     this.dustGlitter.frequency = rolling ? rate * 3 : -1;
     this.dust.setPosition(x - 4, y + DOUGHNUT.outerRadius - 2);
     this.dustGlitter.setPosition(x - 4, y + DOUGHNUT.outerRadius - 2);
-    this.trail.frequency = this.mode !== "running" ? -1 : boosted ? 12 : s.gear >= 1 ? 110 / s.gear : -1;
-    this.trail.setPosition(x - ART_HALF_WIDTH * 0.75, y + 6);
+    // The rainbow trail too, only while rolling, from the same point.
+    this.trail.frequency = !rolling ? -1 : boosted ? 12 : s.gear >= 1 ? 110 / s.gear : -1;
+    this.trail.setPosition(x - 6, y + DOUGHNUT.outerRadius - 3);
 
     this.debug.clear();
     if (this.showHitboxes) this.drawHitboxes(x, y);
