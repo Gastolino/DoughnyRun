@@ -20,6 +20,8 @@ const ART_HOLE_HALF_WIDTH = 12;
 
 /** Where the eyes (and the sunglasses) sit, from the ring's centre. */
 export const EYES_OFFSET = { x: 18, y: -33 } as const;
+/** Eye drawings from wide-eyed to squinting, one per gear. */
+export const EYE_LEVELS = 6;
 
 /** Frames of the sunglasses' rainbow shimmer. */
 export const SHADES_FRAMES = 12;
@@ -112,27 +114,59 @@ export class BootScene extends Phaser.Scene {
     tex.refresh();
   }
 
-  /** Two eyes looking ahead, drawn on their own so that they stay put. */
+  /**
+   * Two eyes looking ahead, drawn on their own so that they stay put. There
+   * is one drawing per gear: "doughnut-eyes" is wide-eyed, and each faster
+   * gear lowers a lid that slants down towards the front, shrinks the pupils
+   * and pushes them forward, until the doughnut is squinting at the road.
+   */
   private makeEyes(): void {
     const w = 24;
     const h = 14;
-    const tex = this.textures.createCanvas("doughnut-eyes", w, h);
-    if (!tex) return;
-    const ctx = tex.getContext();
-    for (const ex of [6, 17]) {
-      ctx.beginPath();
-      ctx.ellipse(ex, 7, 4.6, 5.8, 0, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = "#5a3418";
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(ex + 1.8, 7, 2.4, 0, Math.PI * 2);
-      ctx.fillStyle = "#2b1d2e";
-      ctx.fill();
+    for (let level = 0; level < EYE_LEVELS; level++) {
+      const key = level === 0 ? "doughnut-eyes" : `doughnut-eyes-${level}`;
+      const tex = this.textures.createCanvas(key, w, h);
+      if (!tex) continue;
+      const ctx = tex.getContext();
+      const focus = level / (EYE_LEVELS - 1);
+      for (const ex of [6, 17]) {
+        // The lid line: from the back of the eye down towards the front.
+        const lidBack = 1.2 + focus * 3.2;
+        const lidFront = 1.2 + focus * 5.6;
+        const lid = (x: number) => lidBack + ((x - (ex - 5)) / 10) * (lidFront - lidBack);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(ex - 6, lid(ex - 6));
+        ctx.lineTo(ex + 6, lid(ex + 6));
+        ctx.lineTo(ex + 6, h);
+        ctx.lineTo(ex - 6, h);
+        ctx.closePath();
+        ctx.clip();
+        ctx.beginPath();
+        ctx.ellipse(ex, 7, 4.6, 5.8, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "#5a3418";
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(ex + 1.8 + focus * 1, 7 + focus * 0.8, 2.4 - focus * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#2b1d2e";
+        ctx.fill();
+        ctx.restore();
+        if (level > 0) {
+          // The lid's edge, darker as the stare hardens.
+          ctx.beginPath();
+          ctx.moveTo(ex - 4.6, lid(ex - 4.6));
+          ctx.lineTo(ex + 4.6, lid(ex + 4.6));
+          ctx.lineWidth = 1 + focus;
+          ctx.lineCap = "round";
+          ctx.strokeStyle = "#5a3418";
+          ctx.stroke();
+        }
+      }
+      tex.refresh();
     }
-    tex.refresh();
   }
 
   /**

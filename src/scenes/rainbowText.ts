@@ -1,13 +1,15 @@
 import Phaser from "phaser";
-import { READABLE_FONT, TITLE_FONT } from "./fonts";
+import { INK, OUTLINE_FONT, READABLE_FONT, TITLE_FONT } from "./fonts";
 
-// Rainbow lettering: bold comic letters, each a different colour, inside a
-// white edge and an outer outline that runs through the rainbow. Drawn on a
-// canvas at twice the size it is shown, so that it stays crisp when the game
-// is scaled up on a phone. The same drawing serves the game and the menu.
+// Rainbow lettering: each letter a different colour, inside a white edge and
+// a dark outer edge. Title lines are Bubble Toy Solid Bold with the Outline
+// Bold cut drawn over it in ink, which gives every bubble letter its inked
+// contour and shine marks. Sentence lines are in the readable face with the
+// same edges. Drawn on a canvas at twice the size it is shown, so that it
+// stays crisp when the game is scaled up on a phone. The same drawing serves
+// the game and the menu.
 
-const LETTER_COLORS = ["#e8203a", "#f26b1d", "#dba000", "#23a34a", "#1f7de0", "#7b3fe4", "#d6247f"];
-const OUTLINE = ["#ff3b5c", "#ff9a3c", "#ffe14a", "#4fd66f", "#4fb3ff", "#a87bff", "#ff5fc0"];
+export const LETTER_COLORS = ["#ff4a64", "#ff8f2e", "#ffd23f", "#4fd66f", "#4fb3ff", "#a87bff", "#ff6fc6"];
 export const SPLASH_COLORS = [0xff5fa2, 0xffa24a, 0xffd23f, 0x6fd66f, 0x4fb3ff, 0xa87bff, 0xffffff];
 
 export const RAINBOW_SCALE = 2;
@@ -27,6 +29,7 @@ interface Glyph {
   tilt: number;
   font: string;
   px: number;
+  title: boolean;
 }
 
 function drawGlyphs(ctx: CanvasRenderingContext2D, glyphs: Glyph[], paint: (g: Glyph) => void): void {
@@ -107,7 +110,13 @@ function tint(mask: HTMLCanvasElement, fill: string | CanvasGradient): HTMLCanva
  * or scores, in Bubble Toy; any lines after them are sentences, in the
  * readable face at a slightly smaller size.
  */
-export function drawRainbow(text: string, size: number, style: RainbowStyle = "plain", titleLines = Infinity): HTMLCanvasElement {
+export function drawRainbow(
+  text: string,
+  size: number,
+  style: RainbowStyle = "plain",
+  titleLines = Infinity,
+  lineColors: readonly (string | null)[] = [],
+): HTMLCanvasElement {
   const bubbly = style === "bubbly";
   const base = size * RAINBOW_SCALE;
   const canvas = document.createElement("canvas");
@@ -144,18 +153,19 @@ export function drawRainbow(text: string, size: number, style: RainbowStyle = "p
   lines.forEach((line, row) => {
     // Sizing a canvas resets its settings, the font included.
     measure.font = line.font;
+    const fixed = lineColors[row] ?? null;
     let x = (canvas.width - widths[row]) / 2;
     const y = top + line.height / 2;
     top += line.height;
     for (const ch of line.text) {
-      const color = LETTER_COLORS[colorIndex % LETTER_COLORS.length];
+      const color = fixed ?? LETTER_COLORS[colorIndex % LETTER_COLORS.length];
       const w = measure.measureText(ch).width;
       const i = colorIndex;
       if (ch.trim()) colorIndex++;
       const wobble = bubbly && line.title;
       const tilt = wobble ? Math.sin(i * 1.9 + 0.5) * 0.09 : 0;
       const bounce = wobble ? Math.sin(i * 2.4) * line.px * 0.045 : 0;
-      glyphs.push({ ch, x: x + w / 2, y: y + bounce, color, tilt, font: line.font, px: line.px });
+      glyphs.push({ ch, x: x + w / 2, y: y + bounce, color, tilt, font: line.font, px: line.px, title: line.title });
       x += w + line.spacing;
     }
   });
@@ -166,8 +176,8 @@ export function drawRainbow(text: string, size: number, style: RainbowStyle = "p
     c.lineCap = "round";
   };
 
-  // Outline layers: each is the letters stroked wide, then rounded off.
-  const outlineLayer = (factor: number): HTMLCanvasElement => {
+  // Edge layers: each is the letters stroked wide, then rounded off.
+  const edgeLayer = (factor: number): HTMLCanvasElement => {
     const [c, g] = layer(canvas);
     setup(g);
     g.strokeStyle = "#fff";
@@ -181,22 +191,20 @@ export function drawRainbow(text: string, size: number, style: RainbowStyle = "p
     roundOff(c, base * factor * 0.45);
     return c;
   };
-  const rainbow = ctx.createLinearGradient(0, 0, canvas.width, canvas.height * 0.4);
-  OUTLINE.forEach((c, i) => rainbow.addColorStop(i / (OUTLINE.length - 1), c));
-  const outer = outlineLayer(bubbly ? 0.4 : 0.34);
-  const inner = outlineLayer(bubbly ? 0.2 : 0.17);
+  const outer = edgeLayer(bubbly ? 0.36 : 0.32);
+  const inner = edgeLayer(bubbly ? 0.22 : 0.19);
 
   if (bubbly) {
     // A soft shadow under the whole word, for depth.
     const [shadow] = layer(canvas);
     shadow.getContext("2d")?.drawImage(outer, 0, 0);
-    tint(shadow, "rgba(74, 35, 64, 0.28)");
+    tint(shadow, "rgba(38, 19, 31, 0.3)");
     ctx.drawImage(shadow, 0, base * 0.07);
   }
-  ctx.drawImage(tint(outer, rainbow), 0, 0);
+  ctx.drawImage(tint(outer, INK), 0, 0);
   ctx.drawImage(tint(inner, "#ffffff"), 0, 0);
 
-  // The letters, and for bubbly titles a glossy highlight across each top.
+  // The letters, with a soft gloss across the top of each bubble letter.
   const [letters, lg] = layer(canvas);
   setup(lg);
   drawGlyphs(lg, glyphs, (gl) => {
@@ -204,18 +212,27 @@ export function drawRainbow(text: string, size: number, style: RainbowStyle = "p
     lg.fillStyle = gl.color;
     lg.fillText(gl.ch, 0, 0);
   });
-  if (bubbly) {
-    lg.globalCompositeOperation = "source-atop";
-    drawGlyphs(lg, glyphs, (gl) => {
-      const shine = lg.createLinearGradient(0, -gl.px * 0.42, 0, gl.px * 0.05);
-      shine.addColorStop(0, "rgba(255,255,255,0.75)");
-      shine.addColorStop(0.55, "rgba(255,255,255,0.25)");
-      shine.addColorStop(1, "rgba(255,255,255,0)");
-      lg.fillStyle = shine;
-      lg.fillRect(-gl.px, -gl.px, gl.px * 2, gl.px * 1.05);
-    });
-    lg.globalCompositeOperation = "source-over";
-  }
+  lg.globalCompositeOperation = "source-atop";
+  drawGlyphs(lg, glyphs, (gl) => {
+    if (!gl.title) return;
+    const shine = lg.createLinearGradient(0, -gl.px * 0.42, 0, -gl.px * 0.05);
+    shine.addColorStop(0, "rgba(255,255,255,0.35)");
+    shine.addColorStop(1, "rgba(255,255,255,0)");
+    lg.fillStyle = shine;
+    lg.fillRect(-gl.px, -gl.px, gl.px * 2, gl.px * 1.1);
+  });
+  lg.globalCompositeOperation = "source-over";
+  // The outline cut over each bubble letter, in ink.
+  drawGlyphs(lg, glyphs, (gl) => {
+    if (!gl.title) return;
+    lg.font = gl.font.replace(TITLE_FONT, OUTLINE_FONT);
+    lg.fillStyle = INK;
+    lg.strokeStyle = INK;
+    // A hair of stroke keeps the ink lines from vanishing at small sizes.
+    lg.lineWidth = gl.px * 0.012;
+    lg.fillText(gl.ch, 0, 0);
+    lg.strokeText(gl.ch, 0, 0);
+  });
   ctx.drawImage(letters, 0, 0);
   return canvas;
 }
@@ -227,9 +244,10 @@ export function rainbowTexture(
   size: number,
   style: RainbowStyle = "plain",
   titleLines = Infinity,
+  lineColors: readonly (string | null)[] = [],
 ): string {
-  const key = `rainbow:${style}:${size}:${titleLines}:${text}`;
-  if (!scene.textures.exists(key)) scene.textures.addCanvas(key, drawRainbow(text, size, style, titleLines));
+  const key = `rainbow:${style}:${size}:${titleLines}:${lineColors.join(",")}:${text}`;
+  if (!scene.textures.exists(key)) scene.textures.addCanvas(key, drawRainbow(text, size, style, titleLines, lineColors));
   return key;
 }
 
@@ -247,9 +265,10 @@ export function showRainbow(
   splash = true,
   style: RainbowStyle = "plain",
   titleLines = Infinity,
+  lineColors: readonly (string | null)[] = [],
 ): Phaser.GameObjects.Image {
   const img = scene.add
-    .image(x, y, rainbowTexture(scene, text, size, style, titleLines))
+    .image(x, y, rainbowTexture(scene, text, size, style, titleLines, lineColors))
     .setScale(0.4 / RAINBOW_SCALE)
     .setScrollFactor(0)
     .setDepth(depth);
