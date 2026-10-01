@@ -1,19 +1,17 @@
 import Phaser from "phaser";
 import { buildLevel } from "../levels/format";
-import { CAMPAIGN, WORLDS, worldLevels } from "../levels/index";
+import { CAMPAIGN } from "../levels/index";
 import { TOPPINGS } from "../logic/toppings";
-import { VIEW } from "../logic/tuning";
-import { medalFor } from "../logic/medals";
-import { bestScore, customLevels, deleteCustomLevel, isFinished } from "../progress";
+import { customLevels, deleteCustomLevel } from "../progress";
 import { h, overlay } from "../ui";
 import { drawRainbow, RAINBOW_SCALE } from "./rainbowText";
 import type { EditorRequest } from "./EditorScene";
 import type { PlayRequest } from "./LevelScene";
-import { EYES_OFFSET } from "./BootScene";
-import { addSkySprinkles, drawBackdrop, drawGround } from "./draw";
+import { drawTitleBackdrop } from "./titleBackdrop";
 
-// The title screen: the way into each world's map, the player's own levels,
-// and the editor.
+// The title screen: Doughnys rolling over wavy levels that stretch to the
+// horizon, the title in front and Start under it, which leads straight into
+// World 1. The player's own levels and the editor sit behind a small button.
 export class MenuScene extends Phaser.Scene {
   constructor() {
     super("menu");
@@ -21,12 +19,7 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setScroll(0, 0);
-    addSkySprinkles(this);
-    drawBackdrop(this, VIEW.width);
-    drawGround(this, { name: "", length: VIEW.width, topping: "plain", ground: [{ x: 0, width: VIEW.width * 2 }], sausages: [], ramps: [], boosts: [], hills: [], vehicles: [], streets: [], theme: "candy" });
-    this.add.image(VIEW.playerScreenX, VIEW.groundY - 48, "doughnut-back-plain");
-    this.add.image(VIEW.playerScreenX, VIEW.groundY - 48, "doughnut-front-plain");
-    this.add.image(VIEW.playerScreenX + EYES_OFFSET.x, VIEW.groundY - 48 + EYES_OFFSET.y, "doughnut-eyes");
+    drawTitleBackdrop(this);
 
     // Deep links: #demo lets the solver play the first level, and #demo-1-2
     // (any campaign id) plays that level.
@@ -37,8 +30,36 @@ export class MenuScene extends Phaser.Scene {
       this.play({ level: CAMPAIGN[index].level, campaignIndex: index, returnTo: "menu", demo: true });
       return;
     }
-    this.showMenu();
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => document.getElementById("menu")?.remove());
+    this.showTitle();
+    const start = () => {
+      if (!document.getElementById("menu-extras")) this.start();
+    };
+    this.input.keyboard?.on("keydown-ENTER", start);
+    this.input.keyboard?.on("keydown-SPACE", start);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      document.getElementById("menu")?.remove();
+      document.getElementById("menu-extras")?.remove();
+    });
+  }
+
+  /** Straight into World 1's map. */
+  private start(): void {
+    this.scene.start("map", { world: 1 });
+  }
+
+  /** The title over the moving landscape, with Start under it. */
+  private showTitle(): void {
+    overlay(
+      "menu",
+      h(
+        "div",
+        { class: "title-screen" },
+        this.title(),
+        h("button", { type: "button", class: "start-button", onclick: () => this.start() }, "Start"),
+        h("button", { type: "button", class: "small extras-button", onclick: () => this.showMenu() }, "Your levels and the editor"),
+      ),
+    );
+    (document.querySelector(".start-button") as HTMLButtonElement | null)?.focus({ preventScroll: true });
   }
 
   private play(request: PlayRequest): void {
@@ -77,39 +98,8 @@ export class MenuScene extends Phaser.Scene {
     return heading;
   }
 
+  /** The player's own levels and the way into the editor, over the title. */
   private showMenu(): void {
-    // Each world at a glance: its medals so far, and the way to its map.
-    const campaign = h(
-      "div",
-      { class: "level-list" },
-      ...WORLDS.map((w) => {
-        const levels = worldLevels(w.id);
-        const medals = levels.map((c) => medalFor(c.level, bestScore(c.id) || null));
-        const count = (m: string) => medals.filter((x) => x === m).length;
-        const finished = medals.filter(Boolean).length;
-        const open = w.opensAfter === null || isFinished(w.opensAfter);
-        const bosses = levels.filter((c) => c.level.chaser).length;
-        const bonus = levels.filter((c) => c.id.startsWith("B-")).length;
-        const plain = levels.length - bosses - bonus;
-        const shape = [`${plain} levels`, bosses ? "a boss" : "", bonus ? `${bonus} bonus levels` : ""].filter(Boolean).join(", ");
-        return h(
-          "button",
-          { type: "button", class: "level-card", disabled: !open, onclick: () => this.scene.start("map", { world: w.id }) },
-          h("span", { class: "level-id" }, String(w.id)),
-          h("span", { class: "level-name" }, `World ${w.id}: ${w.name}`),
-          h(
-            "span",
-            { class: "level-meta" },
-            !open
-              ? `Finish ${w.opensAfter} to open`
-              : finished
-                ? `${finished} of ${levels.length} finished · ${count("gold")} gold, ${count("silver")} silver, ${count("bronze")} bronze`
-                : shape,
-          ),
-        );
-      }),
-    );
-
     const mine = customLevels();
     const custom = mine.length
       ? h(
@@ -148,19 +138,24 @@ export class MenuScene extends Phaser.Scene {
         )
       : h("p", { class: "muted" }, "Levels you save in the editor appear here.");
 
-    overlay(
-      "menu",
+    const close = () => document.getElementById("menu-extras")?.remove();
+    const card = overlay(
+      "menu-extras",
       h(
         "div",
-        { class: "menu-card", role: "dialog", "aria-label": "Doughny Run menu" },
-        this.title(),
-        h("p", { class: "muted" }, "Thread the sausages through the hole. Grind them dead centre to go faster."),
-        h("h2", {}, "Worlds"),
-        campaign,
+        { class: "menu-card", role: "dialog", "aria-label": "Your levels and the editor" },
         h("h2", {}, "Your levels"),
         custom,
-        h("div", { class: "menu-actions" }, h("button", { type: "button", onclick: () => this.edit({}) }, "Open the level editor")),
+        h(
+          "div",
+          { class: "menu-actions" },
+          h("button", { type: "button", onclick: () => this.edit({}) }, "Open the level editor"),
+          h("button", { type: "button", onclick: close }, "Close"),
+        ),
       ),
     );
+    card.addEventListener("click", (e) => {
+      if (e.target === card) close();
+    });
   }
 }

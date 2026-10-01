@@ -3,7 +3,7 @@ import { CAMPAIGN, WORLDS, worldLevels } from "../levels/index";
 import type { CampaignLevel } from "../levels/index";
 import { medalFor, medalTargets } from "../logic/medals";
 import { VIEW } from "../logic/tuning";
-import { bestScore, isUnlocked } from "../progress";
+import { bestScore, isFinished, isUnlocked } from "../progress";
 import { sound } from "../sound";
 import { h, overlay } from "../ui";
 import { EYES_OFFSET } from "./BootScene";
@@ -128,7 +128,25 @@ export class MapScene extends Phaser.Scene {
     kb?.on("keydown-SPACE", () => this.play(this.chosen));
     kb?.on("keydown-ESC", () => this.scene.start("menu"));
 
-    overlay("level-ui", h("button", { type: "button", class: "back-button", onclick: () => this.scene.start("menu") }, "Menu"));
+    // The way to the neighbouring worlds, once they are open.
+    const nextWorld = WORLDS.find((w) => w.id === this.world + 1);
+    const prevWorld = WORLDS.find((w) => w.id === this.world - 1);
+    const worldButtons: HTMLElement[] = [];
+    if (prevWorld) {
+      worldButtons.push(
+        h("button", { type: "button", onclick: () => this.scene.start("map", { world: prevWorld.id }) }, `← World ${prevWorld.id}`),
+      );
+    }
+    if (nextWorld && (nextWorld.opensAfter === null || isFinished(nextWorld.opensAfter))) {
+      worldButtons.push(
+        h("button", { type: "button", onclick: () => this.scene.start("map", { world: nextWorld.id }) }, `World ${nextWorld.id} →`),
+      );
+    }
+    overlay(
+      "level-ui",
+      h("button", { type: "button", class: "back-button", onclick: () => this.scene.start("menu") }, "Title"),
+      h("div", { class: "world-buttons" }, ...worldButtons),
+    );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => document.getElementById("level-ui")?.remove());
   }
 

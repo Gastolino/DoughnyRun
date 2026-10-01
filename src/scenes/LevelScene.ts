@@ -894,9 +894,8 @@ export class LevelScene extends Phaser.Scene {
 
   /**
    * After a skipped sausage the law arrives: an officer's arm in a navy
-   * sleeve with gold buttons rises from below, scoops the doughnut up in its
-   * palm and carries it away off the top of the screen, under flashing
-   * red and blue lights.
+   * sleeve with gold buttons rises from below, grabs the doughnut in its
+   * palm and pulls it down out of sight, under flashing red and blue lights.
    */
   private arrestDoughnut(done: () => void): void {
     const { image, startX, startY } = this.freezeDoughnut();
@@ -933,14 +932,13 @@ export class LevelScene extends Phaser.Scene {
             this.tweens.add({ targets: image, y: startY - 18, duration: 140, ease: "Quad.easeOut" });
           },
         },
-        // Away, up and off the screen, with a little sway.
+        // Then a yank: down and out of sight below the screen.
         {
-          y: -260,
-          x: startX + 120,
-          rotation: 0.18,
-          duration: 900,
-          delay: 220,
-          ease: "Sine.easeIn",
+          y: VIEW.height + 380,
+          rotation: -0.08,
+          duration: 520,
+          delay: 260,
+          ease: "Back.easeIn",
           onUpdate: () => {
             image.setPosition(arm.x, arm.y - DOUGHNUT.outerRadius).setRotation(arm.rotation);
           },

@@ -14,7 +14,8 @@ crash.
 
 Every sausage must go through the hole. A doughnut that passes one without
 threading it, over it or under it, is arrested: an officer's arm in a navy
-sleeve with gold buttons rises from below and carries it away.
+sleeve with gold buttons rises from below, grabs it and pulls it down out of
+sight.
 
 ## Grinding, score and speed
 
